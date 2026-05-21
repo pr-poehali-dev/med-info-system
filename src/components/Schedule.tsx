@@ -120,70 +120,63 @@ function colDateLabel(date: Date, viewDays: ViewDays): string {
 
 function MiniCalendar({ current, onChange }: { current: Date; onChange: (d: Date) => void }) {
   const [month, setMonth] = useState(new Date(current.getFullYear(), current.getMonth(), 1));
-
   const today = new Date(2026, 4, 21);
 
-  const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
-  // Пн=0 ... Вс=6
-  const startOffset = (firstDay.getDay() + 6) % 7;
+  const startOffset = (new Date(month.getFullYear(), month.getMonth(), 1).getDay() + 6) % 7;
   const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
-
   const cells: (Date | null)[] = [];
   for (let i = 0; i < startOffset; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(month.getFullYear(), month.getMonth(), d));
   while (cells.length % 7 !== 0) cells.push(null);
 
   return (
-    <div className="px-2 py-2">
-      {/* Шапка месяца */}
-      <div className="flex items-center justify-between mb-1.5">
+    <div className="px-1.5 py-1.5">
+      {/* Шапка */}
+      <div className="flex items-center justify-between mb-1">
         <button onClick={() => setMonth(d => new Date(d.getFullYear(), d.getMonth()-1, 1))}
-          className="w-5 h-5 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
-          <Icon name="ChevronLeft" size={12} />
+          className="w-4 h-4 flex items-center justify-center rounded hover:bg-muted text-muted-foreground">
+          <Icon name="ChevronLeft" size={11} />
         </button>
-        <span className="text-xs font-semibold text-foreground">
+        <span className="text-[11px] font-semibold text-foreground">
           {MONTHS_RU[month.getMonth()]} {month.getFullYear()}
         </span>
         <button onClick={() => setMonth(d => new Date(d.getFullYear(), d.getMonth()+1, 1))}
-          className="w-5 h-5 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
-          <Icon name="ChevronRight" size={12} />
+          className="w-4 h-4 flex items-center justify-center rounded hover:bg-muted text-muted-foreground">
+          <Icon name="ChevronRight" size={11} />
         </button>
       </div>
-
       {/* Дни недели */}
-      <div className="grid grid-cols-7 mb-0.5">
+      <div className="grid grid-cols-7">
         {WEEKDAYS_SHORT.map(d => (
-          <div key={d} className="text-center text-[10px] font-medium text-muted-foreground py-0.5">{d}</div>
+          <div key={d} className="text-center text-[9px] font-medium text-muted-foreground leading-4">{d}</div>
         ))}
       </div>
-
       {/* Числа */}
-      <div className="grid grid-cols-7 gap-y-0.5">
+      <div className="grid grid-cols-7">
         {cells.map((cell, i) => {
-          if (!cell) return <div key={i} />;
-          const isToday = isSameDay(cell, today);
+          if (!cell) return <div key={i} className="h-5" />;
+          const isToday    = isSameDay(cell, today);
           const isSelected = isSameDay(cell, current);
-          const isWeekend = cell.getDay() === 0 || cell.getDay() === 6;
+          const isWeekend  = cell.getDay() === 0 || cell.getDay() === 6;
           return (
-            <button
-              key={i}
-              onClick={() => onChange(cell)}
-              className={`w-6 h-6 mx-auto flex items-center justify-center rounded text-[11px] transition-colors font-medium
-                ${isSelected ? "text-white" : isToday ? "font-bold" : ""}
-                ${isSelected ? "" : isWeekend ? "text-red-400 hover:bg-muted" : "text-foreground hover:bg-muted"}
-              `}
-              style={isSelected ? { background: "hsl(199,85%,38%)" } : isToday && !isSelected ? { color: "hsl(199,85%,38%)", outline: "1.5px solid hsl(199,85%,38%)", borderRadius: "50%" } : undefined}
+            <button key={i} onClick={() => onChange(cell)}
+              className="h-5 w-full flex items-center justify-center text-[10px] font-medium rounded transition-colors"
+              style={
+                isSelected ? { background: "hsl(199,85%,38%)", color: "white" }
+                : isToday   ? { color: "hsl(199,85%,38%)", outline: "1px solid hsl(199,85%,38%)", borderRadius: 4 }
+                : isWeekend ? { color: "#ef4444" }
+                : { color: "hsl(var(--foreground))" }
+              }
             >
               {cell.getDate()}
             </button>
           );
         })}
       </div>
-
       {/* Сегодня */}
       <button
         onClick={() => { onChange(today); setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); }}
-        className="mt-1.5 w-full text-center text-[10px] font-semibold uppercase tracking-wider py-1 rounded transition-colors hover:bg-muted"
+        className="mt-1 w-full text-center text-[9px] font-bold uppercase tracking-wider py-0.5 rounded hover:bg-muted transition-colors"
         style={{ color: "hsl(199,85%,38%)" }}
       >
         СЕГОДНЯ
@@ -287,46 +280,27 @@ export default function Schedule() {
           <MiniCalendar current={currentDate} onChange={setCurrentDate} />
         </div>
 
-        {/* Шаг + Кол-во дней */}
-        <div className="px-2 py-2 border-b border-border shrink-0 space-y-2">
-          {/* Шаг сетки */}
-          <div>
-            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1 px-0.5">Шаг сетки (мин)</div>
-            <div className="flex flex-wrap gap-1">
+        {/* Шаг + Кол-во дней — два выпадающих select в одну строку */}
+        <div className="px-2 py-2 border-b border-border shrink-0">
+          <div className="flex gap-1.5">
+            <select
+              value={step}
+              onChange={e => setStep(Number(e.target.value) as StepMin)}
+              className="flex-1 text-[11px] border border-border rounded px-1.5 py-1 bg-background text-foreground outline-none cursor-pointer"
+            >
               {STEP_OPTIONS.map(opt => (
-                <button
-                  key={opt.value}
-                  onClick={() => setStep(opt.value)}
-                  className="px-1.5 py-0.5 text-[11px] rounded font-medium transition-colors"
-                  style={step === opt.value
-                    ? { background: "hsl(199,85%,38%)", color: "white" }
-                    : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }
-                  }
-                >
-                  {opt.label}
-                </button>
+                <option key={opt.value} value={opt.value}>{opt.label} мин</option>
               ))}
-            </div>
-          </div>
-
-          {/* Кол-во дней */}
-          <div>
-            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1 px-0.5">Количество дней</div>
-            <div className="flex gap-1">
+            </select>
+            <select
+              value={viewDays}
+              onChange={e => setViewDays(Number(e.target.value) as ViewDays)}
+              className="flex-1 text-[11px] border border-border rounded px-1.5 py-1 bg-background text-foreground outline-none cursor-pointer"
+            >
               {DAYS_OPTIONS.map(opt => (
-                <button
-                  key={opt.value}
-                  onClick={() => setViewDays(opt.value)}
-                  className="px-1.5 py-0.5 text-[11px] rounded font-medium transition-colors"
-                  style={viewDays === opt.value
-                    ? { background: "hsl(162,60%,40%)", color: "white" }
-                    : { background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }
-                  }
-                >
-                  {opt.label}
-                </button>
+                <option key={opt.value} value={opt.value}>{opt.label} {opt.value === 1 ? "день" : opt.value < 5 ? "дня" : "дней"}</option>
               ))}
-            </div>
+            </select>
           </div>
         </div>
 
