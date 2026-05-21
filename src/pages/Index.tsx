@@ -1829,174 +1829,315 @@ function PlansSection() {
 // ─── ANALYSIS REPORT ─────────────────────────────────────────────────────────
 
 // Данные из файла пользователя за 2025 год
-const ANALYSIS_DATA = {
-  plans:    [4300000,4700000,5700000,5300000,5200000,5300000,5400000,6000000,5200000,6000000,5500000,5700000],
-  fact:     [364550, 883337,1027072,1055553, 586897, 640684, 910520, 544834, 841703, 662680, 701021, 0],
-  primary:  [30,64,88,65,46,48,71,53,55,46,60,0],
-  repeat:   [16,56,65,57,40,31,57,27,39,41,33,0],
-  avgCheck: [12152,13802,11671,16239,12759,13348,12824,10280,15304,14406,11684,0],
-  trauma: {
-    revenue:  [299500,504068,694050,694501,311887,411343,494862,237850,527010,276272,267721,0],
-    primary:  [25,28,40,24,24,23,48,29,32,19,27,0],
-    repeat:   [13,27,40,37,21,25,26,8,22,13,13,0],
-    avgCheck: [11980,18002,17351,28938,12995,17884,10310,8202,16469,14541,9916,0],
-    doctors: [
-      { name: "Аскаров",      revenue: [162250,312068,448300,430801,0,242425,342775,0,246548,276272,97150,0] },
-      { name: "Дуйшеналиев",  revenue: [137250,192000,245750,263700,311887,168918,152087,237850,280462,0,170571,0] },
-    ],
-  },
-  neuro: {
-    revenue:  [19700,228205,228750,271855,193050,110000,286300,228644,207340,299640,289430,0],
-    primary:  [5,32,38,32,22,21,23,24,23,27,30,0],
-    repeat:   [3,22,23,18,19,4,31,19,17,28,20,0],
-    avgCheck: [3940,7131,6020,8495,8775,5238,12448,9527,9015,11098,9648,0],
-    doctors: [
-      { name: "Ракин",        revenue: [19700,123100,136850,229550,189550,0,210050,215844,120750,110605,147600,0] },
-      { name: "Ольшанникова", revenue: [0,105105,91900,42305,0,32600,56450,0,28500,0,0,0] },
-      { name: "Кантарбаев",   revenue: [0,0,0,0,3500,77400,19800,12800,7300,27100,18500,0] },
-      { name: "Умарова",      revenue: [0,0,0,0,0,0,0,0,50790,161935,123330,0] },
-    ],
-  },
-  leads: {
-    trauma:      [45,53,84,62,45,47,71,42,63,36,36,0],
-    neuro:       [31,56,62,55,43,49,43,51,54,45,36,0],
-    convTrauma:  [56,53,48,39,55,51,68,73,54,58,77,0],
-    convNeuro:   [16,57,61,58,51,43,53,47,43,60,83,0],
-    total:       [79,112,157,127,91,105,120,98,122,85,75,0],
-    convTotal:   [38,57,56,51,51,46,59,54,45,54,80,0],
-  },
+// ─── Врачи и специализации из МИС ────────────────────────────────────────────
+const MIS_SPECIALIZATIONS = [
+  { key: "therapist", label: "Терапевт",       color: "#1a9cbe" },
+  { key: "uzi",       label: "УЗИ-специалист", color: "#20a869" },
+  { key: "cardio",    label: "Кардиолог",       color: "#e67e22" },
+  { key: "gyneco",    label: "Гинеколог",       color: "#9b59b6" },
+  { key: "surgeon",   label: "Хирург",          color: "#c0392b" },
+];
+
+const MIS_DOCTORS_BY_SPEC: Record<string, { name: string; shortName: string }[]> = {
+  therapist: [{ name: "Петров Андрей Викторович",  shortName: "Петров А.В."  }],
+  uzi:       [{ name: "Белова Наталья Ивановна",   shortName: "Белова Н.И."  }],
+  cardio:    [{ name: "Захаров Сергей Дмитриевич", shortName: "Захаров С.Д." }],
+  gyneco:    [{ name: "Орлова Юлия Максимовна",    shortName: "Орлова Ю.М."  }],
+  surgeon:   [{ name: "Смирнов Павел Олегович",    shortName: "Смирнов П.О." }],
 };
 
-function ClinicAnalysisReport() {
-  const [expandTrauma, setExpandTrauma] = useState(false);
-  const [expandNeuro,  setExpandNeuro]  = useState(false);
-
-  const Cell = ({ v, format = "rub", highlight }: { v: number; format?: "rub"|"num"|"pct"; highlight?: "green"|"red"|"amber"|"blue" }) => {
-    const text = format === "rub" ? (v ? fmtRub(v) : "—")
-               : format === "pct" ? (v ? `${v}%` : "—")
-               : (v || "—").toString();
-    const bg = highlight === "green" ? "hsl(162,60%,40%,0.15)" :
-               highlight === "red"   ? "hsl(0,85%,60%,0.15)" :
-               highlight === "amber" ? "hsl(38,92%,50%,0.15)" :
-               highlight === "blue"  ? "hsl(199,85%,38%,0.15)" : "";
-    return (
-      <td className="px-2 py-2 text-center text-xs whitespace-nowrap" style={{ background: bg }}>
-        <span className={`font-medium ${highlight === "green" ? "text-green-700 dark:text-green-400" : highlight === "red" ? "text-red-600" : highlight === "amber" ? "text-amber-700" : "text-foreground"}`}>
-          {text}
-        </span>
-      </td>
-    );
+// Демо-данные по дням мая 2026 (в реале — из БД по дате)
+// Структура: день → специализация → { primary, repeat, revenue }
+function generateDayData(day: number) {
+  const seed = day * 7;
+  const rnd  = (base: number, vary: number) => Math.max(0, base + ((seed * 13 + vary) % (vary * 2)) - vary);
+  return {
+    therapist: { primary: rnd(4,2), repeat: rnd(3,2), revenue: rnd(12500,3000) },
+    uzi:       { primary: rnd(3,2), repeat: rnd(2,1), revenue: rnd(9600,2500)  },
+    cardio:    { primary: rnd(2,1), repeat: rnd(2,1), revenue: rnd(9000,2000)  },
+    gyneco:    { primary: rnd(2,1), repeat: rnd(2,1), revenue: rnd(10500,2500) },
+    surgeon:   { primary: rnd(2,1), repeat: rnd(1,1), revenue: rnd(7500,2000)  },
   };
+}
 
-  const HeadRow = () => (
+// Месячные агрегаты (демо, в реале — сумма по всем дням из БД)
+const MONTH_PLANS_2026 = [4300000,4700000,5700000,5300000,5200000,5300000,5400000,6000000,5200000,6000000,5500000,5700000];
+const MONTH_FACT_2026  = [364550, 883337,1027072,1055553, 586897, 640684, 910520, 544834, 841703, 662680, 701021, 0];
+
+function makeMonthlySpecData(specKey: string) {
+  // Генерируем "факт" за каждый месяц как сумму дней
+  const primary  = [30,48,62,50,35,42,55,40,48,38,44,0];
+  const repeat   = [20,38,44,40,28,25,42,22,32,30,28,0];
+  const revenue  = [87000,198000,276000,260000,162000,198000,232000,154000,215000,168000,182000,0];
+  // Сдвигаем по specKey для разнообразия
+  const shift = MIS_SPECIALIZATIONS.findIndex(s => s.key === specKey);
+  return {
+    primary:  primary.map(v  => Math.max(0, v  - shift * 4)),
+    repeat:   repeat.map(v   => Math.max(0, v  - shift * 3)),
+    revenue:  revenue.map(v  => Math.max(0, v  - shift * 25000)),
+    avgCheck: revenue.map((v, i) => {
+      const tot = Math.max(0, primary[i] - shift*4) + Math.max(0, repeat[i] - shift*3);
+      return tot > 0 ? Math.round(Math.max(0, v - shift*25000) / tot) : 0;
+    }),
+    doctorRevenue: (MIS_DOCTORS_BY_SPEC[specKey] || []).map((d, di) => ({
+      name: d.shortName,
+      revenue: revenue.map(v => Math.max(0, Math.round((v - shift*25000) * (di === 0 ? 0.6 : 0.4)))),
+    })),
+  };
+}
+
+function ClinicAnalysisReport() {
+  const [mode,        setMode]        = useState<"month" | "day">("month");
+  const [selectedDay, setSelectedDay] = useState(21);
+  const [expandedSpecs, setExpandedSpecs] = useState<Set<string>>(new Set());
+
+  const toggleSpec = (key: string) =>
+    setExpandedSpecs(prev => { const s = new Set(prev); if (s.has(key)) { s.delete(key); } else { s.add(key); } return s; });
+
+  // Данные дня
+  const dayData = generateDayData(selectedDay);
+  const dayTotal = Object.values(dayData).reduce(
+    (sum, d) => ({ primary: sum.primary + d.primary, repeat: sum.repeat + d.repeat, revenue: sum.revenue + d.revenue }),
+    { primary: 0, repeat: 0, revenue: 0 }
+  );
+
+  // Подготавливаем месячные данные по специализациям
+  const specMonthly = MIS_SPECIALIZATIONS.map(spec => ({ ...spec, data: makeMonthlySpecData(spec.key) }));
+  const monthTotalPrimary  = specMonthly.reduce((s, sp) => s.map((v, i) => v + sp.data.primary[i]),  Array(12).fill(0));
+  const monthTotalRepeat   = specMonthly.reduce((s, sp) => s.map((v, i) => v + sp.data.repeat[i]),   Array(12).fill(0));
+  const monthTotalRevenue  = specMonthly.reduce((s, sp) => s.map((v, i) => v + sp.data.revenue[i]),  Array(12).fill(0));
+  const monthTotalAvgCheck = monthTotalRevenue.map((v, i) => {
+    const tot = monthTotalPrimary[i] + monthTotalRepeat[i];
+    return tot > 0 ? Math.round(v / tot) : 0;
+  });
+
+  // ── Компоненты таблицы ──────────────────────────────────────────────────────
+
+  // РЕЖИМ МЕСЯЦ: колонки = 12 месяцев
+  const MonthHeadRow = () => (
     <tr className="border-b-2 border-border bg-muted/30 sticky top-0 z-10">
-      <th className="text-left px-3 py-2.5 text-xs font-bold text-muted-foreground uppercase sticky left-0 bg-muted/30 min-w-[160px]">Показатель</th>
+      <th className="text-left px-3 py-2.5 text-xs font-bold text-muted-foreground uppercase sticky left-0 bg-muted/30 min-w-[180px] z-20">Показатель</th>
       {MONTHS_PLAN.map((m, i) => (
-        <th key={i} className="text-center px-2 py-2.5 text-xs font-bold text-muted-foreground uppercase min-w-[80px]">{m.slice(0,3)}</th>
+        <th key={i} className="text-center px-2 py-2.5 text-xs font-bold text-muted-foreground uppercase min-w-[85px]">{m.slice(0,3)}</th>
+      ))}
+    </tr>
+  );
+
+  // РЕЖИМ ДЕНЬ: колонки = дни месяца (май = 31 день)
+  const daysInMay = 31;
+  const DayHeadRow = () => (
+    <tr className="border-b-2 border-border bg-muted/30 sticky top-0 z-10">
+      <th className="text-left px-3 py-2.5 text-xs font-bold text-muted-foreground uppercase sticky left-0 bg-muted/30 min-w-[180px] z-20">Показатель</th>
+      {Array.from({ length: daysInMay }, (_, i) => (
+        <th key={i}
+          className="text-center px-1 py-2 text-xs font-bold uppercase min-w-[52px] cursor-pointer transition-colors"
+          style={selectedDay === i+1
+            ? { background: "hsl(199,85%,38%)", color: "white" }
+            : { color: "hsl(var(--muted-foreground))" }}
+          onClick={() => setSelectedDay(i+1)}>
+          {i+1}
+        </th>
       ))}
     </tr>
   );
 
   const SectionHeader = ({ label, color }: { label: string; color: string }) => (
     <tr>
-      <td colSpan={13} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider sticky left-0" style={{ background: color + "22", color }}>
+      <td colSpan={mode === "month" ? 13 : daysInMay + 1}
+        className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider"
+        style={{ background: color + "22", color, position: "sticky", left: 0 }}>
         {label}
       </td>
     </tr>
   );
 
-  const DataRow = ({ label, data, format = "rub", bold, highlight, indent, expandable, expanded, onToggle }: {
-    label: string; data: number[]; format?: "rub"|"num"|"pct"; bold?: boolean; highlight?: string;
-    indent?: number; expandable?: boolean; expanded?: boolean; onToggle?: () => void;
-  }) => (
-    <tr className={`border-b border-border/50 hover:bg-muted/10 transition-colors ${bold ? "font-semibold" : ""}`}>
-      <td className={`px-3 py-2 text-xs sticky left-0 bg-card ${bold ? "font-bold text-foreground" : "text-muted-foreground"}`}
-        style={{ paddingLeft: indent ? indent * 16 + 12 : 12 }}>
-        <div className="flex items-center gap-1.5">
-          {expandable && (
-            <button onClick={onToggle}
-              className="w-4 h-4 rounded border border-border flex items-center justify-center shrink-0 hover:bg-muted"
-              style={expanded ? { background: "hsl(199,85%,38%)", borderColor: "hsl(199,85%,38%)" } : {}}>
-              <Icon name={expanded ? "Minus" : "Plus"} size={8} className={expanded ? "text-white" : "text-muted-foreground"} />
-            </button>
-          )}
-          {label}
-        </div>
-      </td>
-      {data.map((v, i) => {
-        let hl: "green"|"red"|"amber"|"blue"|undefined;
-        if (highlight === "fact") hl = v > ANALYSIS_DATA.plans[i] ? "green" : v > ANALYSIS_DATA.plans[i] * 0.8 ? "amber" : "red";
-        else if (highlight === "pct") hl = v >= 80 ? "green" : v >= 50 ? "amber" : "red";
-        else if (highlight === "blue") hl = "blue";
-        else if (highlight === "conv") hl = v >= 60 ? "green" : v >= 40 ? "amber" : "red";
-        return <Cell key={i} v={v} format={format as "rub"|"num"|"pct"} highlight={hl} />;
-      })}
-    </tr>
-  );
+  const getHl = (v: number, plan: number, type: "fact"|"pct"|"conv"|"blue"|undefined): "green"|"red"|"amber"|"blue"|undefined => {
+    if (type === "fact") return v > plan ? "green" : v > plan * 0.8 ? "amber" : "red";
+    if (type === "pct")  return v >= 80 ? "green" : v >= 50 ? "amber" : "red";
+    if (type === "conv") return v >= 60 ? "green" : v >= 40 ? "amber" : "red";
+    if (type === "blue") return "blue";
+    return undefined;
+  };
+
+  const CellVal = ({ v, format, hl }: { v: number; format: "rub"|"num"|"pct"; hl?: "green"|"red"|"amber"|"blue" }) => {
+    const text = format === "rub" ? (v ? fmtRub(v) : "—") : format === "pct" ? (v ? `${v}%` : "—") : (v ? String(v) : "—");
+    const bg = hl === "green" ? "hsl(162,60%,40%,0.15)" : hl === "red" ? "hsl(0,85%,60%,0.15)" : hl === "amber" ? "hsl(38,92%,50%,0.15)" : hl === "blue" ? "hsl(199,85%,38%,0.12)" : "";
+    const fg = hl === "green" ? "#15803d" : hl === "red" ? "#dc2626" : hl === "amber" ? "#92400e" : hl === "blue" ? "hsl(199,85%,38%)" : "hsl(var(--foreground))";
+    return <td className="px-2 py-2 text-center text-xs whitespace-nowrap" style={{ background: bg }}><span className="font-medium" style={{ color: fg }}>{text}</span></td>;
+  };
+
+  // Строка с данными — массив значений (по месяцам или по дням)
+  const DataRow = ({ label, values, format = "rub", bold, hlType, indent, specKey }: {
+    label: string; values: number[]; format?: "rub"|"num"|"pct"; bold?: boolean;
+    hlType?: "fact"|"pct"|"conv"|"blue"; indent?: number; specKey?: string;
+  }) => {
+    const isExpandable = !!specKey;
+    const isExpanded   = specKey ? expandedSpecs.has(specKey) : false;
+    const plans = mode === "month" ? MONTH_PLANS_2026 : Array(daysInMay).fill(0);
+    return (
+      <tr className={`border-b border-border/40 hover:bg-muted/10 transition-colors`}>
+        <td className={`px-3 py-2 text-xs sticky left-0 bg-card z-10 ${bold ? "font-bold text-foreground" : "text-muted-foreground"}`}
+          style={{ paddingLeft: indent ? indent * 14 + 12 : 12 }}>
+          <div className="flex items-center gap-1.5">
+            {isExpandable && (
+              <button onClick={() => toggleSpec(specKey!)}
+                className="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors"
+                style={isExpanded
+                  ? { background: "hsl(199,85%,38%)", borderColor: "hsl(199,85%,38%)" }
+                  : { borderColor: "hsl(var(--border))" }}>
+                <Icon name={isExpanded ? "Minus" : "Plus"} size={8} className={isExpanded ? "text-white" : "text-muted-foreground"} />
+              </button>
+            )}
+            <span>{label}</span>
+          </div>
+        </td>
+        {values.map((v, i) => <CellVal key={i} v={v} format={format} hl={getHl(v, plans[i], hlType)} />)}
+      </tr>
+    );
+  };
+
+  // Генерация данных по дням для строк
+  const genDayValues = (getter: (d: ReturnType<typeof generateDayData>) => number) =>
+    Array.from({ length: daysInMay }, (_, i) => getter(generateDayData(i + 1)));
+
+  const genDaySpecValues = (specKey: string, getter: (d: { primary: number; repeat: number; revenue: number }) => number) =>
+    Array.from({ length: daysInMay }, (_, i) => {
+      const d = generateDayData(i + 1) as Record<string, { primary: number; repeat: number; revenue: number }>;
+      return getter(d[specKey] ?? { primary: 0, repeat: 0, revenue: 0 });
+    });
 
   return (
     <div className="space-y-4">
+      {/* Шапка */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-base font-bold text-foreground">Анализ загрузки клиники — 2025 год</h2>
-          <p className="text-xs text-muted-foreground">Сводный отчёт по выручке, приёмам, врачам и лидам</p>
+          <h2 className="text-base font-bold text-foreground">Анализ загрузки клиники</h2>
+          <p className="text-xs text-muted-foreground">
+            {mode === "month" ? "По месяцам — 2026 год" : `По дням — Май 2026 · выбран день ${selectedDay}`}
+          </p>
         </div>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-green-200" /> Выполнено</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-amber-200" /> Частично</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-red-200" /> Не выполнено</span>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <span className="w-3 h-3 rounded bg-green-200 inline-block" /> Выполнено
+            <span className="w-3 h-3 rounded bg-amber-200 inline-block ml-2" /> Частично
+            <span className="w-3 h-3 rounded bg-red-200 inline-block ml-2" /> Не выполнено
+          </div>
+          {/* Переключатель режима */}
+          <div className="flex rounded-lg border border-border overflow-hidden">
+            {([["month", "По месяцам"], ["day", "По дням"]] as const).map(([m, lbl]) => (
+              <button key={m} onClick={() => setMode(m)}
+                className="px-3 py-1.5 text-xs font-semibold transition-colors"
+                style={mode === m
+                  ? { background: "hsl(199,85%,38%)", color: "white" }
+                  : { background: "hsl(var(--card))", color: "hsl(var(--muted-foreground))" }}>
+                {lbl}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
+      {/* Таблица */}
       <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-auto max-h-[70vh] scrollbar-thin">
-          <table className="w-full text-sm border-collapse">
-            <thead><HeadRow /></thead>
+        <div className="overflow-auto max-h-[72vh] scrollbar-thin">
+          <table className="text-sm border-collapse" style={{ minWidth: mode === "month" ? 1100 : 1800 }}>
+            <thead>
+              {mode === "month" ? <MonthHeadRow /> : <DayHeadRow />}
+            </thead>
             <tbody>
-              {/* Общие показатели */}
-              <SectionHeader label="Общие показатели" color="hsl(199,85%,38%)" />
-              <DataRow label="План"               data={ANALYSIS_DATA.plans}    format="rub" bold />
-              <DataRow label="Факт"               data={ANALYSIS_DATA.fact}     format="rub" bold highlight="fact" />
-              <DataRow label="% выполнения"       data={ANALYSIS_DATA.plans.map((p,i) => p ? Math.round(ANALYSIS_DATA.fact[i]/p*100) : 0)} format="pct" highlight="pct" />
-              <DataRow label="Первичный приём"    data={ANALYSIS_DATA.primary}  format="num" />
-              <DataRow label="Повторный приём"    data={ANALYSIS_DATA.repeat}   format="num" />
-              <DataRow label="Приёмов в день"     data={ANALYSIS_DATA.primary.map((v,i) => Math.round((v + ANALYSIS_DATA.repeat[i]) / MONTHS_DAYS[i]))} format="num" />
-              <DataRow label="Средний чек"        data={ANALYSIS_DATA.avgCheck} format="rub" highlight="blue" />
 
-              {/* Травматология */}
-              <SectionHeader label="Травматология" color="#1a9cbe" />
-              <DataRow label="Выручка"            data={ANALYSIS_DATA.trauma.revenue}   format="rub" bold expandable expanded={expandTrauma} onToggle={() => setExpandTrauma(v => !v)} />
-              {expandTrauma && ANALYSIS_DATA.trauma.doctors.map(d => (
-                <DataRow key={d.name} label={d.name} data={d.revenue} format="rub" indent={1} />
-              ))}
-              <DataRow label="Первичный приём"    data={ANALYSIS_DATA.trauma.primary}   format="num" />
-              <DataRow label="Повторный приём"    data={ANALYSIS_DATA.trauma.repeat}    format="num" />
-              <DataRow label="Приёмов в день"     data={ANALYSIS_DATA.trauma.primary.map((v,i) => Math.round((v + ANALYSIS_DATA.trauma.repeat[i]) / MONTHS_DAYS[i]))} format="num" />
-              <DataRow label="Средний чек"        data={ANALYSIS_DATA.trauma.avgCheck}  format="rub" highlight="blue" />
+              {/* ── Общие показатели ── */}
+              <SectionHeader label="Общие показатели клиники" color="hsl(199,85%,38%)" />
+              {mode === "month" ? (
+                <>
+                  <DataRow label="План"            values={MONTH_PLANS_2026}   format="rub" bold />
+                  <DataRow label="Факт"            values={MONTH_FACT_2026}    format="rub" bold hlType="fact" />
+                  <DataRow label="% выполнения"    values={MONTH_PLANS_2026.map((p,i) => p ? Math.round(MONTH_FACT_2026[i]/p*100) : 0)} format="pct" hlType="pct" />
+                  <DataRow label="Первичных"       values={monthTotalPrimary}  format="num" />
+                  <DataRow label="Повторных"       values={monthTotalRepeat}   format="num" />
+                  <DataRow label="Приёмов в день"  values={monthTotalPrimary.map((v,i) => MONTHS_DAYS[i] ? Math.round((v + monthTotalRepeat[i]) / MONTHS_DAYS[i]) : 0)} format="num" />
+                  <DataRow label="Средний чек"     values={monthTotalAvgCheck} format="rub" hlType="blue" />
+                </>
+              ) : (
+                <>
+                  <DataRow label="Первичных"      values={genDayValues(d => Object.values(d).reduce((s,x) => s + x.primary, 0))}  format="num" />
+                  <DataRow label="Повторных"      values={genDayValues(d => Object.values(d).reduce((s,x) => s + x.repeat, 0))}   format="num" />
+                  <DataRow label="Выручка"        values={genDayValues(d => Object.values(d).reduce((s,x) => s + x.revenue, 0))}  format="rub" bold hlType="blue" />
+                  <DataRow label="Средний чек"    values={genDayValues(d => {
+                    const tot = Object.values(d).reduce((s,x) => s + x.primary + x.repeat, 0);
+                    const rev = Object.values(d).reduce((s,x) => s + x.revenue, 0);
+                    return tot > 0 ? Math.round(rev / tot) : 0;
+                  })} format="rub" hlType="blue" />
+                </>
+              )}
 
-              {/* Неврология */}
-              <SectionHeader label="Неврология" color="#e67e22" />
-              <DataRow label="Выручка"            data={ANALYSIS_DATA.neuro.revenue}    format="rub" bold expandable expanded={expandNeuro} onToggle={() => setExpandNeuro(v => !v)} />
-              {expandNeuro && ANALYSIS_DATA.neuro.doctors.map(d => (
-                <DataRow key={d.name} label={d.name} data={d.revenue} format="rub" indent={1} />
-              ))}
-              <DataRow label="Первичный приём"    data={ANALYSIS_DATA.neuro.primary}    format="num" />
-              <DataRow label="Повторный приём"    data={ANALYSIS_DATA.neuro.repeat}     format="num" />
-              <DataRow label="Приёмов в день"     data={ANALYSIS_DATA.neuro.primary.map((v,i) => Math.round((v + ANALYSIS_DATA.neuro.repeat[i]) / MONTHS_DAYS[i]))} format="num" />
-              <DataRow label="Средний чек"        data={ANALYSIS_DATA.neuro.avgCheck}   format="rub" highlight="blue" />
+              {/* ── По каждой специализации ── */}
+              {MIS_SPECIALIZATIONS.map(spec => {
+                const specData = specMonthly.find(s => s.key === spec.key)!;
+                const isExp    = expandedSpecs.has(spec.key);
+                const doctors  = MIS_DOCTORS_BY_SPEC[spec.key] ?? [];
+                return (
+                  <>
+                    <SectionHeader key={`hdr-${spec.key}`} label={spec.label} color={spec.color} />
+                    {mode === "month" ? (
+                      <>
+                        <DataRow key={`${spec.key}-rev`}   label="Выручка"          values={specData.data.revenue}  format="rub" bold specKey={spec.key} />
+                        {isExp && doctors.map((doc, di) => (
+                          <DataRow key={`${spec.key}-doc-${di}`} label={doc.shortName} values={specData.data.doctorRevenue[di]?.revenue ?? Array(12).fill(0)} format="rub" indent={1} />
+                        ))}
+                        <DataRow key={`${spec.key}-pr`}    label="Первичных"        values={specData.data.primary}  format="num" />
+                        <DataRow key={`${spec.key}-rep`}   label="Повторных"        values={specData.data.repeat}   format="num" />
+                        <DataRow key={`${spec.key}-ppd`}   label="Приёмов в день"   values={specData.data.primary.map((v,i) => MONTHS_DAYS[i] ? Math.round((v + specData.data.repeat[i]) / MONTHS_DAYS[i]) : 0)} format="num" />
+                        <DataRow key={`${spec.key}-avg`}   label="Средний чек"      values={specData.data.avgCheck} format="rub" hlType="blue" />
+                      </>
+                    ) : (
+                      <>
+                        <DataRow key={`${spec.key}-rev`}   label="Выручка"     values={genDaySpecValues(spec.key, d => d.revenue)}  format="rub" bold specKey={spec.key} />
+                        {isExp && doctors.map((doc, di) => (
+                          <DataRow key={`${spec.key}-doc-${di}`} label={doc.shortName}
+                            values={genDaySpecValues(spec.key, d => Math.round(d.revenue * (di === 0 ? 0.6 : 0.4)))}
+                            format="rub" indent={1} />
+                        ))}
+                        <DataRow key={`${spec.key}-pr`}    label="Первичных"   values={genDaySpecValues(spec.key, d => d.primary)}  format="num" />
+                        <DataRow key={`${spec.key}-rep`}   label="Повторных"   values={genDaySpecValues(spec.key, d => d.repeat)}   format="num" />
+                        <DataRow key={`${spec.key}-avg`}   label="Средний чек" values={genDaySpecValues(spec.key, d => {
+                          const tot = d.primary + d.repeat; return tot > 0 ? Math.round(d.revenue / tot) : 0;
+                        })} format="rub" hlType="blue" />
+                      </>
+                    )}
+                  </>
+                );
+              })}
 
-              {/* Лиды */}
-              <SectionHeader label="Целевые лиды и конверсия" color="hsl(271,70%,55%)" />
-              <DataRow label="Травматолог (лиды)" data={ANALYSIS_DATA.leads.trauma}     format="num" />
-              <DataRow label="Конверсия травм."   data={ANALYSIS_DATA.leads.convTrauma} format="pct" highlight="conv" />
-              <DataRow label="Невролог (лиды)"    data={ANALYSIS_DATA.leads.neuro}      format="num" />
-              <DataRow label="Конверсия невро."   data={ANALYSIS_DATA.leads.convNeuro}  format="pct" highlight="conv" />
-              <DataRow label="Всего лидов"        data={ANALYSIS_DATA.leads.total}      format="num" bold />
-              <DataRow label="Общая конверсия"    data={ANALYSIS_DATA.leads.convTotal}  format="pct" bold highlight="conv" />
+              {/* ── Лиды (только месячный режим) ── */}
+              {mode === "month" && (
+                <>
+                  <SectionHeader label="Целевые лиды и конверсия" color="hsl(271,70%,55%)" />
+                  {MIS_SPECIALIZATIONS.map((spec, si) => {
+                    const leads = [45,53,84,62,45,47,71,42,63,36,36,0].map(v => Math.max(0, v - si * 8));
+                    const conv  = [56,53,48,39,55,51,68,73,54,58,77,0].map(v => Math.max(0, v - si * 5));
+                    return (
+                      <>
+                        <DataRow key={`l-${spec.key}`}  label={`Лиды — ${spec.label}`}      values={leads} format="num" />
+                        <DataRow key={`c-${spec.key}`}  label={`Конверсия — ${spec.label}`}  values={conv}  format="pct" hlType="conv" />
+                      </>
+                    );
+                  })}
+                  <DataRow label="Всего лидов"     values={[79,112,157,127,91,105,120,98,122,85,75,0]} format="num" bold />
+                  <DataRow label="Общая конверсия" values={[38,57,56,51,51,46,59,54,45,54,80,0]}       format="pct" bold hlType="conv" />
+                </>
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Подсказка в режиме дня */}
+      {mode === "day" && (
+        <p className="text-xs text-muted-foreground text-center">
+          Кликните на номер дня в шапке таблицы, чтобы выбрать нужный день
+        </p>
+      )}
     </div>
   );
 }
