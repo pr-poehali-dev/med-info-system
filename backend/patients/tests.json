@@ -1,0 +1,21 @@
+{
+  "tests": [
+    {
+      "name": "List patients returns 200",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {"patients": []},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Create patient with missing fields",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "create", "fullName": ""},
+      "expectedStatus": 400,
+      "expectedBody": {"error": "ФИО и дата рождения обязательны"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

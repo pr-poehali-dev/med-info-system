@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Icon from "@/components/ui/icon";
+import Schedule from "@/components/Schedule";
 
 type Section =
   | "dashboard"
@@ -148,13 +149,27 @@ export default function Index() {
               <div className="text-sidebar-foreground text-xs opacity-60">МИС v1.0</div>
             </div>
           )}
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className={`text-sidebar-foreground hover:text-white transition-colors ${sidebarCollapsed ? "mx-auto" : "ml-auto"}`}
-          >
-            <Icon name={sidebarCollapsed ? "ChevronRight" : "ChevronLeft"} size={16} />
-          </button>
+          {!sidebarCollapsed && (
+            <button
+              onClick={() => setSidebarCollapsed(true)}
+              className="ml-auto text-sidebar-foreground hover:text-white transition-colors p-1 rounded hover:bg-sidebar-accent"
+              title="Свернуть меню"
+            >
+              <Icon name="ChevronLeft" size={16} />
+            </button>
+          )}
         </div>
+
+        {/* Кнопка развернуть (только при свёрнутом) */}
+        {sidebarCollapsed && (
+          <button
+            onClick={() => setSidebarCollapsed(false)}
+            className="mx-auto mt-2 mb-1 w-9 h-9 flex items-center justify-center rounded-lg hover:bg-sidebar-accent text-sidebar-foreground hover:text-white transition-colors border border-sidebar-border"
+            title="Развернуть меню"
+          >
+            <Icon name="ChevronRight" size={16} />
+          </button>
+        )}
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto scrollbar-thin py-3 px-2">
@@ -237,10 +252,10 @@ export default function Index() {
         </header>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin p-6">
-          <div className="animate-fade-in max-w-[1280px]">
+        <div className={`flex-1 ${active === "schedule" ? "overflow-hidden flex flex-col" : "overflow-y-auto scrollbar-thin"} p-6`}>
+          <div className={`animate-fade-in ${active === "schedule" ? "h-full flex flex-col" : "max-w-[1280px]"}`}>
             {active === "dashboard" && <DashboardSection />}
-            {active === "schedule" && <ScheduleSection />}
+            {active === "schedule" && <Schedule />}
             {active === "patients" && <PatientsSection />}
             {active === "protocols" && <ProtocolsSection />}
             {active === "documents" && <DocumentsSection />}
@@ -362,78 +377,6 @@ function DashboardSection() {
             </div>
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─── SCHEDULE ─── */
-function ScheduleSection() {
-  const hours = ["09:00", "09:45", "10:30", "11:15", "12:00", "12:45", "13:30", "14:15", "15:00"];
-  const doctors = ["Петров А.В.", "Белова Н.И.", "Захаров С.Д."];
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <button className="p-2 rounded-lg border border-border hover:bg-muted transition-colors">
-            <Icon name="ChevronLeft" size={16} />
-          </button>
-          <span className="font-semibold text-sm">21 мая 2026, среда</span>
-          <button className="p-2 rounded-lg border border-border hover:bg-muted transition-colors">
-            <Icon name="ChevronRight" size={16} />
-          </button>
-        </div>
-        <div className="flex gap-2">
-          <button className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg font-medium">День</button>
-          <button className="px-3 py-1.5 text-xs border border-border rounded-lg font-medium hover:bg-muted transition-colors">Неделя</button>
-          <button className="px-3 py-1.5 text-xs border border-border rounded-lg font-medium hover:bg-muted transition-colors">Месяц</button>
-        </div>
-      </div>
-      <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
-        <div
-          className="grid border-b border-border"
-          style={{ gridTemplateColumns: `80px repeat(${doctors.length}, 1fr)` }}
-        >
-          <div className="p-3 bg-muted/50 border-r border-border" />
-          {doctors.map((d, i) => (
-            <div
-              key={i}
-              className="p-3 text-center text-xs font-semibold text-foreground border-r last:border-r-0 border-border bg-muted/30"
-            >
-              {d}
-            </div>
-          ))}
-        </div>
-        {hours.map((h) => (
-          <div
-            key={h}
-            className="grid border-b last:border-b-0 border-border"
-            style={{ gridTemplateColumns: `80px repeat(${doctors.length}, 1fr)` }}
-          >
-            <div className="p-3 text-xs text-muted-foreground font-medium border-r border-border bg-muted/10">{h}</div>
-            {doctors.map((doc, di) => {
-              const cell = todaySchedule.find((s) => s.time === h && s.doctor === doc);
-              return (
-                <div key={di} className="p-1.5 border-r last:border-r-0 border-border min-h-[52px]">
-                  {cell ? (
-                    <div
-                      className={`rounded-lg p-2 text-xs h-full cursor-pointer hover:opacity-80 transition-opacity ${
-                        cell.status === "active"
-                          ? "bg-green-100 border border-green-200"
-                          : cell.status === "done"
-                          ? "bg-muted/60 border border-border"
-                          : "bg-blue-50 border border-blue-100"
-                      }`}
-                    >
-                      <div className="font-semibold truncate text-foreground">{cell.patient}</div>
-                      <div className="text-muted-foreground truncate">{cell.service}</div>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        ))}
       </div>
     </div>
   );
