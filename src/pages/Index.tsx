@@ -282,108 +282,295 @@ export default function Index({ user }: IndexProps) {
 }
 
 /* ─── DASHBOARD ─── */
-function DashboardSection() {
+
+// Демо-данные из МИС (потом заменятся реальными из БД)
+const TODAY_DATA = {
+  date: "21 мая 2026, среда",
+  // Из расписания
+  primary:  { trauma: 9,  neuro: 4,  total: 13 },
+  repeat:   { trauma: 6,  neuro: 3,  total: 9  },
+  total:    22,
+  // Выручка (расчёт: кол-во × ср.чек)
+  revenue:  { trauma: 134_500, neuro: 58_200, total: 192_700 },
+  avgCheck: { trauma: 8_969, neuro: 9_700, total: 8_759 },
+  // Лиды
+  leads:    { trauma: 6, neuro: 3, total: 9, converted: 7 },
+};
+
+const MONTH_DATA = {
+  month: "Май 2026",
+  daysTotal: 31,
+  daysPassed: 21,
+  plan: 5_200_000,
+  // Должно быть к этому дню = план / дней * прошло
+  shouldBe: Math.round(5_200_000 / 31 * 21),
+  fact: 586_897 + 193_050 + 140_000, // травма + невро + прочие (демо май из файла)
+  primary: { trauma: 24, neuro: 22, total: 46 },
+  repeat:  { trauma: 21, neuro: 19, total: 40 },
+  revenue: { trauma: 311_887, neuro: 193_050, total: 504_937 },
+  avgCheck:{ trauma: 12_995, neuro: 8_775, total: 10_108 },
+  leads:   { total: 91, trauma: 45, neuro: 43, converted: 47, convPct: 51 },
+};
+
+function pct(fact: number, plan: number) { return Math.min(100, Math.round(fact / plan * 100)); }
+function fmtNum(n: number) { return n.toLocaleString("ru-RU"); }
+function fmtRub(n: number) { return fmtNum(n) + " ₽"; }
+
+function ProgressBar({ value, max, color }: { value: number; max: number; color: string }) {
+  const p = Math.min(100, Math.round(value / max * 100));
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {stats.map((s, i) => (
-          <div key={i} className={`${s.color} rounded-xl p-5 text-white card-hover cursor-default`}>
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-white/70 text-xs font-medium mb-1">{s.label}</p>
-                <p className="text-2xl font-bold">{s.value}</p>
-                <p className="text-white/60 text-xs mt-1">{s.sub}</p>
-              </div>
-              <div className="w-10 h-10 rounded-lg bg-white/15 flex items-center justify-center">
-                <Icon name={s.icon} size={20} className="text-white" />
-              </div>
-            </div>
-          </div>
+    <div className="h-2 rounded-full bg-muted overflow-hidden">
+      <div className="h-full rounded-full transition-all duration-700" style={{ width: `${p}%`, background: color }} />
+    </div>
+  );
+}
+
+function KpiCard({ label, value, sub, icon, accent, pctVal }: {
+  label: string; value: string; sub?: string; icon: string; accent: string; pctVal?: number;
+}) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-4 shadow-sm flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: accent + "20" }}>
+          <Icon name={icon} size={16} style={{ color: accent }} />
+        </div>
+      </div>
+      <p className="text-xl font-bold text-foreground">{value}</p>
+      {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+      {pctVal !== undefined && (
+        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+          <div className="h-full rounded-full transition-all duration-700"
+            style={{ width: `${pctVal}%`, background: accent }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SpecTable({ rows }: { rows: { label: string; primary: number; repeat: number; revenue: number; avgCheck: number; color: string }[] }) {
+  const totals = rows.reduce((s, r) => ({
+    primary: s.primary + r.primary, repeat: s.repeat + r.repeat,
+    revenue: s.revenue + r.revenue, avgCheck: 0,
+  }), { primary: 0, repeat: 0, revenue: 0, avgCheck: 0 });
+  totals.avgCheck = totals.primary + totals.repeat > 0
+    ? Math.round(totals.revenue / (totals.primary + totals.repeat)) : 0;
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-muted/30 border-b border-border">
+            <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Специализация</th>
+            <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Первичных</th>
+            <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Повторных</th>
+            <th className="text-right px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Всего</th>
+            <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Выручка</th>
+            <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ср. чек</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {rows.map((r, i) => (
+            <tr key={i} className="hover:bg-muted/20 transition-colors">
+              <td className="px-4 py-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.color }} />
+                  <span className="font-medium text-foreground">{r.label}</span>
+                </div>
+              </td>
+              <td className="px-3 py-2.5 text-right font-medium text-foreground">{r.primary}</td>
+              <td className="px-3 py-2.5 text-right text-muted-foreground">{r.repeat}</td>
+              <td className="px-3 py-2.5 text-right font-semibold text-foreground">{r.primary + r.repeat}</td>
+              <td className="px-4 py-2.5 text-right font-semibold" style={{ color: "hsl(162,60%,40%)" }}>{fmtRub(r.revenue)}</td>
+              <td className="px-4 py-2.5 text-right text-muted-foreground">{fmtRub(r.avgCheck)}</td>
+            </tr>
+          ))}
+          <tr className="bg-muted/10 border-t-2 border-border font-bold">
+            <td className="px-4 py-2.5 text-foreground">Итого</td>
+            <td className="px-3 py-2.5 text-right text-foreground">{totals.primary}</td>
+            <td className="px-3 py-2.5 text-right text-foreground">{totals.repeat}</td>
+            <td className="px-3 py-2.5 text-right text-foreground">{totals.primary + totals.repeat}</td>
+            <td className="px-4 py-2.5 text-right" style={{ color: "hsl(162,60%,40%)" }}>{fmtRub(totals.revenue)}</td>
+            <td className="px-4 py-2.5 text-right text-foreground">{fmtRub(totals.avgCheck)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DashboardSection() {
+  const [tab, setTab] = useState<"today" | "month">("today");
+
+  const todaySpecRows = [
+    { label: "Травматология", primary: TODAY_DATA.primary.trauma, repeat: TODAY_DATA.repeat.trauma, revenue: TODAY_DATA.revenue.trauma, avgCheck: TODAY_DATA.avgCheck.trauma, color: "#1a9cbe" },
+    { label: "Неврология",    primary: TODAY_DATA.primary.neuro,  repeat: TODAY_DATA.repeat.neuro,  revenue: TODAY_DATA.revenue.neuro,  avgCheck: TODAY_DATA.avgCheck.neuro,  color: "#e67e22" },
+  ];
+
+  const monthSpecRows = [
+    { label: "Травматология", primary: MONTH_DATA.primary.trauma, repeat: MONTH_DATA.repeat.trauma, revenue: MONTH_DATA.revenue.trauma, avgCheck: MONTH_DATA.avgCheck.trauma, color: "#1a9cbe" },
+    { label: "Неврология",    primary: MONTH_DATA.primary.neuro,  repeat: MONTH_DATA.repeat.neuro,  revenue: MONTH_DATA.revenue.neuro,  avgCheck: MONTH_DATA.avgCheck.neuro,  color: "#e67e22" },
+  ];
+
+  const monthPct    = pct(MONTH_DATA.fact, MONTH_DATA.plan);
+  const shouldBePct = pct(MONTH_DATA.shouldBe, MONTH_DATA.plan);
+
+  return (
+    <div className="space-y-5">
+
+      {/* Переключатель */}
+      <div className="flex items-center gap-2">
+        {([["today", "Сегодня · 21 мая"], ["month", "Май 2026"]] as const).map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)}
+            className="px-4 py-2 rounded-lg text-sm font-semibold border transition-colors"
+            style={tab === id
+              ? { background: "hsl(199,85%,38%)", color: "white", borderColor: "hsl(199,85%,38%)" }
+              : { borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))", background: "hsl(var(--card))" }}>
+            {label}
+          </button>
         ))}
+        <span className="ml-auto text-xs text-muted-foreground">Данные из МИС · обновлено сейчас</span>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        <div className="xl:col-span-2 bg-card rounded-xl border border-border shadow-sm">
-          <div className="flex items-center justify-between px-5 pt-5 pb-3">
-            <h2 className="font-semibold text-foreground">Расписание на сегодня</h2>
-            <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
-              {todaySchedule.length} приёмов
-            </span>
+      {/* ══ СЕГОДНЯ ══ */}
+      {tab === "today" && (
+        <div className="space-y-5">
+          {/* KPI-карточки */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+            <KpiCard label="Приёмов сегодня"   value={String(TODAY_DATA.total)}             icon="CalendarCheck"  accent="hsl(199,85%,38%)" />
+            <KpiCard label="Первичных"          value={String(TODAY_DATA.primary.total)}     icon="UserPlus"       accent="hsl(162,60%,40%)" />
+            <KpiCard label="Повторных"          value={String(TODAY_DATA.repeat.total)}      icon="RefreshCw"      accent="hsl(38,92%,50%)" />
+            <KpiCard label="Выручка за день"    value={fmtRub(TODAY_DATA.revenue.total)}     icon="Banknote"       accent="hsl(162,60%,40%)" />
+            <KpiCard label="Ср. чек"            value={fmtRub(TODAY_DATA.avgCheck.total)}    icon="Receipt"        accent="hsl(199,85%,38%)" />
           </div>
-          <div className="divide-y divide-border">
-            {todaySchedule.map((row, i) => (
-              <div key={i} className="flex items-center gap-4 px-5 py-3 hover:bg-muted/40 transition-colors">
-                <div className="text-sm font-semibold text-primary w-12 shrink-0">{row.time}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm text-foreground truncate">{row.patient}</div>
-                  <div className="text-xs text-muted-foreground truncate">
-                    {row.service} · {row.doctor}
-                  </div>
-                </div>
-                <span className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${statusLabel[row.status].cls}`}>
-                  {statusLabel[row.status].label}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
 
-        <div className="space-y-4">
-          <div className="bg-card rounded-xl border border-border shadow-sm p-5">
-            <h3 className="font-semibold text-sm text-foreground mb-3">Врачи сегодня</h3>
-            <div className="space-y-2.5">
-              {employees
-                .filter((e) => e.status === "active")
-                .slice(0, 3)
-                .map((e, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                      style={{ background: `hsl(${180 + i * 20}, 60%, 40%)` }}
-                    >
-                      {e.name
-                        .split(" ")
-                        .slice(0, 2)
-                        .map((n) => n[0])
-                        .join("")}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-medium text-foreground truncate">
-                        {e.name.split(" ").slice(0, 2).join(" ")}
-                      </div>
-                      <div className="text-xs text-muted-foreground">{e.role}</div>
-                    </div>
-                    <div className="ml-auto w-2 h-2 rounded-full bg-green-400 shrink-0"></div>
-                  </div>
-                ))}
+          {/* Лиды сегодня */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <KpiCard label="Лидов сегодня"       value={String(TODAY_DATA.leads.total)}     icon="PhoneIncoming"  accent="hsl(271,70%,55%)" />
+            <KpiCard label="Записались"          value={String(TODAY_DATA.leads.converted)} icon="CalendarPlus"   accent="hsl(162,60%,40%)" />
+            <KpiCard label="Конверсия"           value={`${Math.round(TODAY_DATA.leads.converted/TODAY_DATA.leads.total*100)}%`} icon="TrendingUp" accent="hsl(199,85%,38%)"
+              pctVal={Math.round(TODAY_DATA.leads.converted/TODAY_DATA.leads.total*100)} />
+          </div>
+
+          {/* Таблица по специализациям */}
+          <div>
+            <h3 className="text-sm font-semibold text-foreground mb-2">По специализациям — сегодня</h3>
+            <SpecTable rows={todaySpecRows} />
+          </div>
+
+          {/* Расписание */}
+          <div className="bg-card rounded-xl border border-border shadow-sm">
+            <div className="flex items-center justify-between px-5 pt-4 pb-3">
+              <h3 className="font-semibold text-sm text-foreground">Приёмы сегодня</h3>
+              <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-full">{todaySchedule.length} записей</span>
             </div>
-          </div>
-
-          <div className="bg-card rounded-xl border border-border shadow-sm p-5">
-            <h3 className="font-semibold text-sm text-foreground mb-3">Финансы — май 2026</h3>
-            <div className="space-y-2">
-              {[
-                { label: "Выручка", val: "2 184 500 ₽", pct: 92, color: "hsl(162,60%,42%)" },
-                { label: "Расходы", val: "890 000 ₽", pct: 45, color: "hsl(199,85%,50%)" },
-                { label: "Прибыль", val: "1 294 500 ₽", pct: 75, color: "hsl(162,60%,42%)" },
-              ].map((f, i) => (
-                <div key={i}>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-muted-foreground">{f.label}</span>
-                    <span className="font-semibold text-foreground">{f.val}</span>
+            <div className="divide-y divide-border">
+              {todaySchedule.map((row, i) => (
+                <div key={i} className="flex items-center gap-4 px-5 py-2.5 hover:bg-muted/40 transition-colors">
+                  <div className="text-sm font-semibold text-primary w-12 shrink-0">{row.time}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm text-foreground truncate">{row.patient}</div>
+                    <div className="text-xs text-muted-foreground truncate">{row.service} · {row.doctor}</div>
                   </div>
-                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{ width: `${f.pct}%`, background: f.color }}
-                    />
-                  </div>
+                  <span className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${statusLabel[row.status].cls}`}>
+                    {statusLabel[row.status].label}
+                  </span>
                 </div>
               ))}
             </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* ══ МЕСЯЦ ══ */}
+      {tab === "month" && (
+        <div className="space-y-5">
+
+          {/* План / Факт / Должно быть */}
+          <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-foreground">Выполнение плана — {MONTH_DATA.month}</h3>
+              <span className="text-xs text-muted-foreground">{MONTH_DATA.daysPassed} из {MONTH_DATA.daysTotal} рабочих дней</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground mb-1">План на месяц</p>
+                <p className="text-2xl font-bold text-foreground">{fmtRub(MONTH_DATA.plan)}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground mb-1">Должно быть к сегодня</p>
+                <p className="text-2xl font-bold" style={{ color: "hsl(38,92%,50%)" }}>{fmtRub(MONTH_DATA.shouldBe)}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground mb-1">Факт</p>
+                <p className="text-2xl font-bold" style={{ color: "hsl(162,60%,40%)" }}>{fmtRub(MONTH_DATA.fact)}</p>
+              </div>
+            </div>
+            {/* Прогресс-бар двойной */}
+            <div className="space-y-2">
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-muted-foreground">Факт от плана</span>
+                  <span className="font-semibold" style={{ color: monthPct >= 100 ? "hsl(162,60%,40%)" : monthPct < shouldBePct - 10 ? "#ef4444" : "hsl(38,92%,50%)" }}>
+                    {monthPct}%
+                  </span>
+                </div>
+                <div className="h-4 rounded-full bg-muted overflow-hidden relative">
+                  {/* Должно быть — маркер */}
+                  <div className="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-10" style={{ left: `${shouldBePct}%` }} />
+                  <div className="h-full rounded-full transition-all duration-700"
+                    style={{ width: `${monthPct}%`, background: monthPct >= shouldBePct ? "hsl(162,60%,40%)" : "#ef4444" }} />
+                </div>
+                <div className="flex justify-between text-[10px] mt-0.5 text-muted-foreground">
+                  <span>0</span>
+                  <span style={{ marginLeft: `${shouldBePct - 2}%` }}>▲ норма</span>
+                  <span>{fmtRub(MONTH_DATA.plan)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* KPI месяца */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+            <KpiCard label="Всего приёмов"   value={String(MONTH_DATA.primary.total + MONTH_DATA.repeat.total)} icon="CalendarCheck" accent="hsl(199,85%,38%)" />
+            <KpiCard label="Первичных"        value={String(MONTH_DATA.primary.total)}  icon="UserPlus"     accent="hsl(162,60%,40%)" />
+            <KpiCard label="Повторных"        value={String(MONTH_DATA.repeat.total)}   icon="RefreshCw"    accent="hsl(38,92%,50%)" />
+            <KpiCard label="Выручка (факт)"   value={fmtRub(MONTH_DATA.fact)}           icon="Banknote"     accent="hsl(162,60%,40%)" />
+            <KpiCard label="Ср. чек"          value={fmtRub(MONTH_DATA.avgCheck.total)} icon="Receipt"      accent="hsl(199,85%,38%)" />
+          </div>
+
+          {/* Таблица по специализациям */}
+          <div>
+            <h3 className="text-sm font-semibold text-foreground mb-2">По специализациям — {MONTH_DATA.month}</h3>
+            <SpecTable rows={monthSpecRows} />
+          </div>
+
+          {/* Лиды за месяц */}
+          <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+            <h3 className="font-semibold text-sm text-foreground mb-4">Лиды и конверсия — {MONTH_DATA.month}</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {[
+                { label: "Всего лидов",    val: MONTH_DATA.leads.total,      color: "hsl(199,85%,38%)" },
+                { label: "Записались",     val: MONTH_DATA.leads.converted,  color: "hsl(162,60%,40%)" },
+                { label: "Травматология",  val: MONTH_DATA.leads.trauma,     color: "#1a9cbe" },
+                { label: "Неврология",     val: MONTH_DATA.leads.neuro,      color: "#e67e22" },
+              ].map((l, i) => (
+                <div key={i} className="text-center p-3 rounded-lg bg-muted/20 border border-border/50">
+                  <p className="text-2xl font-bold" style={{ color: l.color }}>{l.val}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{l.label}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4">
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-muted-foreground">Конверсия в запись</span>
+                <span className="font-bold" style={{ color: "hsl(162,60%,40%)" }}>{MONTH_DATA.leads.convPct}%</span>
+              </div>
+              <ProgressBar value={MONTH_DATA.leads.convPct} max={100} color="hsl(162,60%,40%)" />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
