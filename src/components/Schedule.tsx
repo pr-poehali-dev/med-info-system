@@ -892,7 +892,7 @@ export default function Schedule() {
         {/* Шапка: фиксированная колонка времени + скроллируемые врачи */}
         <div className="flex shrink-0 border-b border-border overflow-hidden" style={{ background: "hsl(var(--muted)/0.15)" }}>
           {/* Заглушка под sticky колонку времени */}
-          <div className="shrink-0 border-r border-border bg-card z-20" style={{ width: 44 }} />
+          <div className="shrink-0 border-r border-border bg-card" style={{ width: 44, zIndex: 30 }} />
           {/* Скроллируемая область — overflow hidden, скролл синхронный с телом */}
           <div ref={headerRef} className="flex-1 overflow-hidden">
             {/* Структура: для каждого дня — один блок дата + врачи под ней */}
@@ -953,7 +953,7 @@ export default function Schedule() {
         <div ref={gridRef} className="flex-1 overflow-auto scrollbar-thin" onScroll={onGridScroll}>
           <div className="flex" style={{ minHeight: `${totalSlots * slotHeight}px` }}>
             {/* Колонка времени — прилипает при горизонтальном скролле */}
-            <div className="shrink-0 border-r border-border relative bg-card z-20" style={{ width: 44, position: "sticky", left: 0 }}>
+            <div className="shrink-0 border-r border-border relative bg-card" style={{ width: 44, position: "sticky", left: 0, zIndex: 30 }}>
               {/* Линия текущего времени — маркер слева */}
               <div className="absolute right-0 z-10 flex items-center" style={{ top: `${currentTimePx}px` }}>
                 <div className="w-2 h-2 rounded-full bg-red-500 translate-x-1" />
