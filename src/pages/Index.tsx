@@ -19,8 +19,8 @@ type Section =
   | "settings";
 
 const navItems: { id: Section; label: string; icon: string; group: string }[] = [
-  { id: "dashboard", label: "Дашборд", icon: "LayoutDashboard", group: "main" },
   { id: "schedule", label: "Расписание приёмов", icon: "CalendarDays", group: "main" },
+  { id: "dashboard", label: "Дашборд", icon: "LayoutDashboard", group: "main" },
   { id: "patients", label: "Пациенты", icon: "Users", group: "main" },
   { id: "protocols", label: "Протоколы и шаблоны", icon: "FileText", group: "main" },
   { id: "documents", label: "Договора и ИДС", icon: "FolderOpen", group: "docs" },
@@ -122,7 +122,7 @@ interface IndexProps {
 }
 
 export default function Index({ user }: IndexProps) {
-  const [active, setActive] = useState<Section>("dashboard");
+  const [active, setActive] = useState<Section>("schedule");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const grouped: Record<string, typeof navItems> = {};

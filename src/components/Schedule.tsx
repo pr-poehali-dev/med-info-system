@@ -148,22 +148,22 @@ function MiniCalendar({ current, onChange }: { current: Date; onChange: (d: Date
       {/* Дни недели */}
       <div className="grid grid-cols-7">
         {WEEKDAYS_SHORT.map(d => (
-          <div key={d} className="text-center text-[8px] font-medium text-muted-foreground leading-[14px]">{d}</div>
+          <div key={d} className="text-center text-[7px] font-medium text-muted-foreground leading-[11px]">{d}</div>
         ))}
       </div>
       {/* Числа */}
       <div className="grid grid-cols-7">
         {cells.map((cell, i) => {
-          if (!cell) return <div key={i} className="h-[18px]" />;
+          if (!cell) return <div key={i} className="h-[14px]" />;
           const isToday    = isSameDay(cell, today);
           const isSelected = isSameDay(cell, current);
           const isWeekend  = cell.getDay() === 0 || cell.getDay() === 6;
           return (
             <button key={i} onClick={() => onChange(cell)}
-              className="h-[18px] w-full flex items-center justify-center text-[9px] font-medium rounded transition-colors"
+              className="h-[14px] w-full flex items-center justify-center text-[9px] font-medium rounded transition-colors"
               style={
                 isSelected ? { background: "hsl(199,85%,38%)", color: "white" }
-                : isToday   ? { color: "hsl(199,85%,38%)", outline: "1px solid hsl(199,85%,38%)", borderRadius: 3 }
+                : isToday   ? { color: "hsl(199,85%,38%)", outline: "1px solid hsl(199,85%,38%)", borderRadius: 2 }
                 : isWeekend ? { color: "#ef4444" }
                 : { color: "hsl(var(--foreground))" }
               }
@@ -176,7 +176,7 @@ function MiniCalendar({ current, onChange }: { current: Date; onChange: (d: Date
       {/* Сегодня */}
       <button
         onClick={() => { onChange(today); setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); }}
-        className="mt-0.5 w-full text-center text-[8px] font-bold uppercase tracking-wider py-0.5 rounded hover:bg-muted transition-colors"
+        className="w-full text-center text-[7px] font-bold uppercase tracking-wider py-0.5 rounded hover:bg-muted transition-colors"
         style={{ color: "hsl(199,85%,38%)" }}
       >
         СЕГОДНЯ
@@ -187,17 +187,29 @@ function MiniCalendar({ current, onChange }: { current: Date; onChange: (d: Date
 
 // ─── Основной компонент ───────────────────────────────────────────────────────
 
+// Читаем сохранённые настройки из localStorage
+function readLS<T>(key: string, fallback: T): T {
+  try { const v = localStorage.getItem(key); return v !== null ? JSON.parse(v) as T : fallback; }
+  catch { return fallback; }
+}
+function writeLS(key: string, value: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
+}
+
 export default function Schedule() {
-  const [step, setStep]           = useState<StepMin>(15);
-  const [viewDays, setViewDays]   = useState<ViewDays>(1);
+  const [step, setStepRaw]        = useState<StepMin>(() => readLS("sch_step", 15));
+  const [viewDays, setViewDaysRaw] = useState<ViewDays>(() => readLS("sch_days", 1));
   const [groupBy, setGroupBy]     = useState<GroupBy>("doctor");
   const [selectedSpec, setSelectedSpec] = useState<string>("all");
   const [currentDate, setCurrentDate]   = useState(new Date(2026, 4, 21));
   const [patientSearch, setPatientSearch] = useState("");
   const [tooltip, setTooltip]     = useState<TooltipState | null>(null);
   const gridRef   = useRef<HTMLDivElement>(null);
-  const headerRef = useRef<HTMLDivElement>(null); // шапка врачей — синхронный скролл
+  const headerRef = useRef<HTMLDivElement>(null);
   const wrapRef   = useRef<HTMLDivElement>(null);
+
+  const setStep = (v: StepMin) => { setStepRaw(v); writeLS("sch_step", v); };
+  const setViewDays = (v: ViewDays) => { setViewDaysRaw(v); writeLS("sch_days", v); };
 
   const DAY_START   = 8 * 60;   // 08:00
   const DAY_END     = 21 * 60;  // 21:00
@@ -410,46 +422,55 @@ export default function Schedule() {
         <div className="flex shrink-0 border-b border-border" style={{ background: "hsl(var(--muted)/0.15)" }}>
           {/* Фиксированная колонка времени */}
           <div className="shrink-0 border-r border-border" style={{ width: 44 }} />
-          {/* Скроллируемая область с датами и врачами — overflow hidden, скролл синхронный */}
+          {/* Скроллируемая область — overflow hidden, скролл синхронный с телом */}
           <div ref={headerRef} className="flex-1 overflow-hidden">
+            {/* Структура: для каждого дня — один блок дата + врачи под ней */}
             <div className="flex" style={{ width: `${columns.length * COL_WIDTH}px` }}>
-              {columns.map(col => {
+              {dateCols.map((date, dateIdx) => {
+                // Колонки врачей этого дня
+                const dayCols = columns.filter(c => c.dateIdx === dateIdx);
+                if (!dayCols.length) return null;
+                const isToday = isSameDay(date, new Date(2026, 4, 21));
                 const dateStr = viewDays <= 3
                   ? (() => {
-                      const wd = getDayOfWeek(col.date);
-                      return `${wd.charAt(0).toUpperCase() + wd.slice(1)}, ${col.date.getDate()} ${MONTHS_GEN[col.date.getMonth()]}`;
+                      const wd = getDayOfWeek(date);
+                      return `${wd.charAt(0).toUpperCase() + wd.slice(1)}, ${date.getDate()} ${MONTHS_GEN[date.getMonth()]}`;
                     })()
-                  : `${col.date.getDate()}.${(col.date.getMonth()+1).toString().padStart(2,"0")}`;
-                const isToday = isSameDay(col.date, new Date(2026, 4, 21));
+                  : `${date.getDate()}.${(date.getMonth()+1).toString().padStart(2,"0")}`;
                 return (
-                  <div
-                    key={col.key}
-                    className="border-r last:border-r-0 border-border text-center"
-                    style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
-                  >
-                    {/* Строка даты */}
+                  <div key={dateIdx} style={{ width: dayCols.length * COL_WIDTH }}>
+                    {/* Одна строка даты над всеми врачами этого дня */}
                     <div
-                      className="text-[10px] font-semibold py-0.5 border-b border-border truncate px-1"
+                      className="text-[10px] font-semibold py-0.5 border-b border-border text-center truncate px-1"
                       style={{
-                        background: isToday ? "hsl(199,85%,38%,0.08)" : "hsl(var(--muted)/0.3)",
+                        background: isToday ? "hsl(199,85%,38%,0.1)" : "hsl(var(--muted)/0.4)",
                         color: isToday ? "hsl(199,85%,38%)" : "hsl(var(--foreground))",
+                        borderRight: "1px solid hsl(var(--border))",
                       }}
                     >
                       {dateStr}
                     </div>
-                    {/* Строка врача */}
-                    <div className="py-0.5 px-1">
-                      <div
-                        className="text-[10px] font-semibold truncate leading-tight"
-                        style={{ color: col.color || "hsl(var(--foreground))" }}
-                      >
-                        {col.label}
-                      </div>
-                      {groupBy === "doctor" && (
-                        <div className="text-[9px] text-muted-foreground truncate leading-tight">
-                          {DOCTORS.find(d => d.id === col.docIds[0])?.specialization}
+                    {/* Строки врачей этого дня */}
+                    <div className="flex">
+                      {dayCols.map(col => (
+                        <div
+                          key={col.key}
+                          className="border-r last:border-r-0 border-border text-center py-0.5 px-1"
+                          style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                        >
+                          <div
+                            className="text-[10px] font-semibold truncate leading-tight"
+                            style={{ color: col.color || "hsl(var(--foreground))" }}
+                          >
+                            {col.label}
+                          </div>
+                          {groupBy === "doctor" && (
+                            <div className="text-[9px] text-muted-foreground truncate leading-tight">
+                              {DOCTORS.find(d => d.id === col.docIds[0])?.specialization}
+                            </div>
+                          )}
                         </div>
-                      )}
+                      ))}
                     </div>
                   </div>
                 );
@@ -488,78 +509,88 @@ export default function Schedule() {
 
             {/* Колонки врачей */}
             <div className="flex" style={{ width: `${columns.length * COL_WIDTH}px` }}>
-              {columns.map(col => (
-                <div
-                  key={col.key}
-                  className="border-r last:border-r-0 border-border relative shrink-0"
-                  style={{ width: COL_WIDTH }}
-                >
-                  {/* Линия текущего времени */}
+              {columns.map(col => {
+                // Все приёмы этой колонки — позиционируем абсолютно в пикселях
+                // Высота 1 минуты = slotHeight / step (px)
+                const pxPerMin = slotHeight / step;
+                const colAppts = APPOINTMENTS.filter(a => col.docIds.includes(a.doctorId));
+
+                return (
                   <div
-                    className="absolute left-0 right-0 z-10 pointer-events-none"
-                    style={{ top: `${currentTimePx}px` }}
+                    key={col.key}
+                    className="border-r last:border-r-0 border-border relative shrink-0"
+                    style={{ width: COL_WIDTH, height: totalSlots * slotHeight }}
                   >
-                    <div className="h-0.5 bg-red-400 opacity-60" />
-                  </div>
+                    {/* Линия текущего времени */}
+                    <div
+                      className="absolute left-0 right-0 z-10 pointer-events-none"
+                      style={{ top: `${currentTimePx}px` }}
+                    >
+                      <div className="h-0.5 bg-red-400 opacity-60" />
+                    </div>
 
-                  {/* Слоты */}
-                  {Array.from({ length: totalSlots }, (_, si) => {
-                    const slotMin = DAY_START + si * step;
-                    const isHour   = slotMin % 60 === 0;
-                    const appt     = getApptForSlot(col.docIds, slotMin);
-                    const isFirst  = appt?.startMin === slotMin;
-                    const apptH    = appt ? Math.round((appt.durationMin / step) * slotHeight) : 0;
-                    const doc      = appt ? DOCTORS.find(d => d.id === appt.doctorId) : null;
+                    {/* Фоновая сетка слотов */}
+                    {Array.from({ length: totalSlots }, (_, si) => {
+                      const slotMin = DAY_START + si * step;
+                      const isHour  = slotMin % 60 === 0;
+                      return (
+                        <div
+                          key={si}
+                          className={`absolute left-0 right-0 ${isHour ? "bg-muted/5" : ""} hover:bg-primary/[0.03] cursor-pointer`}
+                          style={{
+                            top: si * slotHeight,
+                            height: slotHeight,
+                            borderBottom: `1px solid hsl(var(--border)/${isHour ? "0.5" : "0.2"})`,
+                          }}
+                        />
+                      );
+                    })}
 
-                    return (
-                      <div
-                        key={si}
-                        className={`relative ${isHour ? "bg-muted/5" : ""} hover:bg-primary/[0.03] cursor-pointer transition-colors`}
-                        style={{
-                          height: slotHeight,
-                          borderBottom: `1px solid hsl(var(--border)/${isHour ? "0.6" : "0.25"})`,
-                        }}
-                      >
-                        {isFirst && appt && (
-                          <div
-                            className="absolute left-0.5 right-0.5 z-20 rounded overflow-hidden cursor-pointer select-none"
-                            style={{
-                              top: 1,
-                              height: apptH - 2,
-                              background: doc?.color || "#1a9cbe",
-                              opacity: appt.status === "done" ? 0.55 : 1,
-                            }}
-                            onMouseEnter={e => { e.stopPropagation(); handleApptMouseEnter(e, appt); }}
-                            onMouseLeave={() => setTooltip(null)}
-                            onClick={e => e.stopPropagation()}
-                          >
-                            {/* Белая полоска слева */}
-                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-white/30" />
-                            <div className="pl-2 pr-1 pt-0.5 h-full overflow-hidden">
-                              <div className="text-white text-[10px] font-bold leading-tight truncate">
-                                {minToTime(appt.startMin)}–{minToTime(appt.startMin + appt.durationMin)}
-                              </div>
-                              {apptH > 24 && (
-                                <div className="text-white/90 text-[10px] leading-tight truncate font-medium">
-                                  {appt.patientName}
-                                </div>
-                              )}
-                              {apptH > 40 && (
-                                <div className="text-white/70 text-[10px] leading-tight truncate">
-                                  {appt.service}
-                                </div>
-                              )}
-                              {appt.isFirstVisit && apptH > 54 && (
-                                <span className="inline-block text-[9px] bg-white/20 rounded px-1 leading-tight mt-0.5">Первичный</span>
-                              )}
+                    {/* Приёмы — абсолютно по реальным минутам, не зависят от шага */}
+                    {colAppts.map(appt => {
+                      const topPx = (appt.startMin - DAY_START) * pxPerMin;
+                      // Минимальная высота 18px, чтобы приём всегда был виден
+                      const apptH = Math.max(18, appt.durationMin * pxPerMin - 2);
+                      const doc = DOCTORS.find(d => d.id === appt.doctorId);
+                      return (
+                        <div
+                          key={appt.id}
+                          className="absolute left-0.5 right-0.5 z-20 rounded overflow-hidden cursor-pointer select-none"
+                          style={{
+                            top: topPx + 1,
+                            height: apptH,
+                            background: doc?.color || "#1a9cbe",
+                            opacity: appt.status === "done" ? 0.55 : 1,
+                          }}
+                          onMouseEnter={e => { e.stopPropagation(); handleApptMouseEnter(e, appt); }}
+                          onMouseLeave={() => setTooltip(null)}
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-white/30" />
+                          <div className="pl-2 pr-1 pt-0.5 h-full overflow-hidden">
+                            <div className="text-white text-[10px] font-bold leading-tight truncate">
+                              {minToTime(appt.startMin)}–{minToTime(appt.startMin + appt.durationMin)}
                             </div>
+                            {apptH > 22 && (
+                              <div className="text-white/90 text-[10px] leading-tight truncate font-medium">
+                                {appt.patientName}
+                              </div>
+                            )}
+                            {apptH > 38 && (
+                              <div className="text-white/70 text-[10px] leading-tight truncate">
+                                {appt.service}
+                              </div>
+                            )}
+                            {appt.isFirstVisit && apptH > 52 && (
+                              <span className="inline-block text-[9px] bg-white/20 rounded px-1 leading-tight mt-0.5">Первичный</span>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
