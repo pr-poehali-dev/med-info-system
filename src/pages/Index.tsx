@@ -286,18 +286,57 @@ export default function Index({ user }: IndexProps) {
 
 /* ─── DASHBOARD ─── */
 
-// Демо-данные из МИС (потом заменятся реальными из БД)
-const TODAY_DATA = {
-  date: "21 мая 2026, среда",
-  // Из расписания
-  primary:  { trauma: 9,  neuro: 4,  total: 13 },
-  repeat:   { trauma: 6,  neuro: 3,  total: 9  },
-  total:    22,
-  // Выручка (расчёт: кол-во × ср.чек)
-  revenue:  { trauma: 134_500, neuro: 58_200, total: 192_700 },
-  avgCheck: { trauma: 8_969, neuro: 9_700, total: 8_759 },
-  // Лиды
-  leads:    { trauma: 6, neuro: 3, total: 9, converted: 7 },
+// Специализации и демо-данные из МИС
+type SpecKey = "therapist" | "uzi" | "cardio" | "gyneco" | "surgeon";
+interface SpecDayData { primary: number; repeat: number; revenue: number; avgCheck: number; }
+interface DaySnapshot {
+  date: string;
+  specs: Record<SpecKey, SpecDayData>;
+  leads: { total: number; converted: number };
+}
+
+const DASH_SPECS: { key: SpecKey; label: string; color: string }[] = [
+  { key: "therapist", label: "Терапевт",       color: "#1a9cbe" },
+  { key: "uzi",       label: "УЗИ-специалист", color: "#20a869" },
+  { key: "cardio",    label: "Кардиолог",       color: "#e67e22" },
+  { key: "gyneco",    label: "Гинеколог",       color: "#9b59b6" },
+  { key: "surgeon",   label: "Хирург",          color: "#c0392b" },
+];
+
+const DAY_HISTORY: Record<string, DaySnapshot> = {
+  "2026-05-21": {
+    date: "21 мая 2026, среда",
+    specs: {
+      therapist: { primary: 4, repeat: 3, revenue: 17_500, avgCheck: 2_500 },
+      uzi:       { primary: 3, repeat: 2, revenue: 16_000, avgCheck: 3_200 },
+      cardio:    { primary: 2, repeat: 2, revenue: 12_000, avgCheck: 3_000 },
+      gyneco:    { primary: 2, repeat: 2, revenue: 14_000, avgCheck: 3_500 },
+      surgeon:   { primary: 2, repeat: 1, revenue:  7_500, avgCheck: 2_500 },
+    },
+    leads: { total: 9, converted: 7 },
+  },
+  "2026-05-20": {
+    date: "20 мая 2026, вторник",
+    specs: {
+      therapist: { primary: 5, repeat: 3, revenue: 20_000, avgCheck: 2_500 },
+      uzi:       { primary: 3, repeat: 1, revenue: 12_800, avgCheck: 3_200 },
+      cardio:    { primary: 2, repeat: 1, revenue:  9_000, avgCheck: 3_000 },
+      gyneco:    { primary: 1, repeat: 2, revenue: 10_500, avgCheck: 3_500 },
+      surgeon:   { primary: 1, repeat: 1, revenue:  5_000, avgCheck: 2_500 },
+    },
+    leads: { total: 8, converted: 5 },
+  },
+  "2026-05-19": {
+    date: "19 мая 2026, понедельник",
+    specs: {
+      therapist: { primary: 6, repeat: 4, revenue: 25_000, avgCheck: 2_500 },
+      uzi:       { primary: 2, repeat: 2, revenue: 12_800, avgCheck: 3_200 },
+      cardio:    { primary: 3, repeat: 1, revenue: 12_000, avgCheck: 3_000 },
+      gyneco:    { primary: 2, repeat: 1, revenue: 10_500, avgCheck: 3_500 },
+      surgeon:   { primary: 2, repeat: 2, revenue: 10_000, avgCheck: 2_500 },
+    },
+    leads: { total: 11, converted: 7 },
+  },
 };
 
 const MONTH_DATA = {
@@ -305,14 +344,16 @@ const MONTH_DATA = {
   daysTotal: 31,
   daysPassed: 21,
   plan: 5_200_000,
-  // Должно быть к этому дню = план / дней * прошло
   shouldBe: Math.round(5_200_000 / 31 * 21),
-  fact: 586_897 + 193_050 + 140_000, // травма + невро + прочие (демо май из файла)
-  primary: { trauma: 24, neuro: 22, total: 46 },
-  repeat:  { trauma: 21, neuro: 19, total: 40 },
-  revenue: { trauma: 311_887, neuro: 193_050, total: 504_937 },
-  avgCheck:{ trauma: 12_995, neuro: 8_775, total: 10_108 },
-  leads:   { total: 91, trauma: 45, neuro: 43, converted: 47, convPct: 51 },
+  fact: 919_947,
+  specs: {
+    therapist: { primary: 88, repeat: 62, revenue: 187_500, avgCheck: 1_250 },
+    uzi:       { primary: 55, repeat: 38, revenue: 172_800, avgCheck: 1_867 },
+    cardio:    { primary: 42, repeat: 35, revenue: 165_000, avgCheck: 2_143 },
+    gyneco:    { primary: 38, repeat: 30, revenue: 189_000, avgCheck: 2_773 },
+    surgeon:   { primary: 28, repeat: 22, revenue: 125_000, avgCheck: 2_500 },
+  } as Record<SpecKey, SpecDayData>,
+  leads: { total: 91, converted: 47, convPct: 51 },
 };
 
 function pct(fact: number, plan: number) { return Math.min(100, Math.round(fact / plan * 100)); }
@@ -402,28 +443,37 @@ function SpecTable({ rows }: { rows: { label: string; primary: number; repeat: n
   );
 }
 
-// Демо-данные за прошлые дни (имитация — в реале из БД по дате)
-const DAY_HISTORY: Record<string, typeof TODAY_DATA> = {
-  "2026-05-21": TODAY_DATA,
-  "2026-05-20": { date: "20 мая 2026, вторник", primary: { trauma: 8, neuro: 5, total: 13 }, repeat: { trauma: 5, neuro: 4, total: 9 }, total: 22, revenue: { trauma: 118_400, neuro: 62_500, total: 180_900 }, avgCheck: { trauma: 8_457, neuro: 9_615, total: 8_223 }, leads: { trauma: 5, neuro: 4, total: 9, converted: 6 } },
-  "2026-05-19": { date: "19 мая 2026, понедельник", primary: { trauma: 10, neuro: 3, total: 13 }, repeat: { trauma: 7, neuro: 2, total: 9 }, total: 22, revenue: { trauma: 142_000, neuro: 44_100, total: 186_100 }, avgCheck: { trauma: 8_353, neuro: 9_800, total: 8_459 }, leads: { trauma: 7, neuro: 2, total: 9, converted: 5 } },
-};
-
 function DashboardSection() {
-  const [tab, setTab]         = useState<"today" | "month">("today");
+  const [tab, setTab]           = useState<"today" | "month">("today");
   const [selectedDate, setSelectedDate] = useState("2026-05-21");
 
-  const dayData = DAY_HISTORY[selectedDate] ?? TODAY_DATA;
+  const daySnapshot = DAY_HISTORY[selectedDate] ?? DAY_HISTORY["2026-05-21"];
+  const daySpecs    = daySnapshot.specs;
+  const dayTotal    = DASH_SPECS.reduce((s, sp) => ({
+    primary: s.primary + daySpecs[sp.key].primary,
+    repeat:  s.repeat  + daySpecs[sp.key].repeat,
+    revenue: s.revenue + daySpecs[sp.key].revenue,
+  }), { primary: 0, repeat: 0, revenue: 0 });
+  const dayAvgCheck = (dayTotal.primary + dayTotal.repeat) > 0
+    ? Math.round(dayTotal.revenue / (dayTotal.primary + dayTotal.repeat)) : 0;
 
-  const todaySpecRows = [
-    { label: "Травматология", primary: dayData.primary.trauma, repeat: dayData.repeat.trauma, revenue: dayData.revenue.trauma, avgCheck: dayData.avgCheck.trauma, color: "#1a9cbe" },
-    { label: "Неврология",    primary: dayData.primary.neuro,  repeat: dayData.repeat.neuro,  revenue: dayData.revenue.neuro,  avgCheck: dayData.avgCheck.neuro,  color: "#e67e22" },
-  ];
+  const todaySpecRows = DASH_SPECS.map(sp => ({
+    label:    sp.label,
+    color:    sp.color,
+    primary:  daySpecs[sp.key].primary,
+    repeat:   daySpecs[sp.key].repeat,
+    revenue:  daySpecs[sp.key].revenue,
+    avgCheck: daySpecs[sp.key].avgCheck,
+  }));
 
-  const monthSpecRows = [
-    { label: "Травматология", primary: MONTH_DATA.primary.trauma, repeat: MONTH_DATA.repeat.trauma, revenue: MONTH_DATA.revenue.trauma, avgCheck: MONTH_DATA.avgCheck.trauma, color: "#1a9cbe" },
-    { label: "Неврология",    primary: MONTH_DATA.primary.neuro,  repeat: MONTH_DATA.repeat.neuro,  revenue: MONTH_DATA.revenue.neuro,  avgCheck: MONTH_DATA.avgCheck.neuro,  color: "#e67e22" },
-  ];
+  const monthSpecRows = DASH_SPECS.map(sp => ({
+    label:    sp.label,
+    color:    sp.color,
+    primary:  MONTH_DATA.specs[sp.key].primary,
+    repeat:   MONTH_DATA.specs[sp.key].repeat,
+    revenue:  MONTH_DATA.specs[sp.key].revenue,
+    avgCheck: MONTH_DATA.specs[sp.key].avgCheck,
+  }));
 
   const monthPct    = pct(MONTH_DATA.fact, MONTH_DATA.plan);
   const shouldBePct = pct(MONTH_DATA.shouldBe, MONTH_DATA.plan);
@@ -458,28 +508,28 @@ function DashboardSection() {
         <div className="space-y-5">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-sm font-medium text-foreground">{dayData.date}</span>
+            <span className="text-sm font-medium text-foreground">{daySnapshot.date}</span>
           </div>
           {/* KPI-карточки */}
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
-            <KpiCard label="Всего приёмов"     value={String(dayData.total)}             icon="CalendarCheck"  accent="hsl(199,85%,38%)" />
-            <KpiCard label="Первичных"          value={String(dayData.primary.total)}     icon="UserPlus"       accent="hsl(162,60%,40%)" />
-            <KpiCard label="Повторных"          value={String(dayData.repeat.total)}      icon="RefreshCw"      accent="hsl(38,92%,50%)" />
-            <KpiCard label="Выручка за день"    value={fmtRub(dayData.revenue.total)}     icon="Banknote"       accent="hsl(162,60%,40%)" />
-            <KpiCard label="Ср. чек"            value={fmtRub(dayData.avgCheck.total)}    icon="Receipt"        accent="hsl(199,85%,38%)" />
+            <KpiCard label="Всего приёмов"  value={String(dayTotal.primary + dayTotal.repeat)} icon="CalendarCheck" accent="hsl(199,85%,38%)" />
+            <KpiCard label="Первичных"      value={String(dayTotal.primary)}                   icon="UserPlus"      accent="hsl(162,60%,40%)" />
+            <KpiCard label="Повторных"      value={String(dayTotal.repeat)}                    icon="RefreshCw"     accent="hsl(38,92%,50%)" />
+            <KpiCard label="Выручка за день" value={fmtRub(dayTotal.revenue)}                 icon="Banknote"      accent="hsl(162,60%,40%)" />
+            <KpiCard label="Ср. чек"        value={fmtRub(dayAvgCheck)}                       icon="Receipt"       accent="hsl(199,85%,38%)" />
           </div>
 
           {/* Лиды за день */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <KpiCard label="Лидов за день"   value={String(dayData.leads.total)}     icon="PhoneIncoming"  accent="hsl(271,70%,55%)" />
-            <KpiCard label="Записались"      value={String(dayData.leads.converted)} icon="CalendarPlus"   accent="hsl(162,60%,40%)" />
-            <KpiCard label="Конверсия"       value={`${Math.round(dayData.leads.converted/dayData.leads.total*100)}%`} icon="TrendingUp" accent="hsl(199,85%,38%)"
-              pctVal={Math.round(dayData.leads.converted/dayData.leads.total*100)} />
+            <KpiCard label="Лидов за день" value={String(daySnapshot.leads.total)}     icon="PhoneIncoming" accent="hsl(271,70%,55%)" />
+            <KpiCard label="Записались"    value={String(daySnapshot.leads.converted)} icon="CalendarPlus"  accent="hsl(162,60%,40%)" />
+            <KpiCard label="Конверсия"     value={`${Math.round(daySnapshot.leads.converted / daySnapshot.leads.total * 100)}%`} icon="TrendingUp" accent="hsl(199,85%,38%)"
+              pctVal={Math.round(daySnapshot.leads.converted / daySnapshot.leads.total * 100)} />
           </div>
 
           {/* Таблица по специализациям */}
           <div>
-            <h3 className="text-sm font-semibold text-foreground mb-2">По специализациям — сегодня</h3>
+            <h3 className="text-sm font-semibold text-foreground mb-2">По специализациям — {daySnapshot.date}</h3>
             <SpecTable rows={todaySpecRows} />
           </div>
 
@@ -556,13 +606,21 @@ function DashboardSection() {
           </div>
 
           {/* KPI месяца */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
-            <KpiCard label="Всего приёмов"   value={String(MONTH_DATA.primary.total + MONTH_DATA.repeat.total)} icon="CalendarCheck" accent="hsl(199,85%,38%)" />
-            <KpiCard label="Первичных"        value={String(MONTH_DATA.primary.total)}  icon="UserPlus"     accent="hsl(162,60%,40%)" />
-            <KpiCard label="Повторных"        value={String(MONTH_DATA.repeat.total)}   icon="RefreshCw"    accent="hsl(38,92%,50%)" />
-            <KpiCard label="Выручка (факт)"   value={fmtRub(MONTH_DATA.fact)}           icon="Banknote"     accent="hsl(162,60%,40%)" />
-            <KpiCard label="Ср. чек"          value={fmtRub(MONTH_DATA.avgCheck.total)} icon="Receipt"      accent="hsl(199,85%,38%)" />
-          </div>
+          {(() => {
+            const totalPrimary = DASH_SPECS.reduce((s, sp) => s + MONTH_DATA.specs[sp.key].primary, 0);
+            const totalRepeat  = DASH_SPECS.reduce((s, sp) => s + MONTH_DATA.specs[sp.key].repeat,  0);
+            const totalRevenue = MONTH_DATA.fact;
+            const avgCheck     = (totalPrimary + totalRepeat) > 0 ? Math.round(totalRevenue / (totalPrimary + totalRepeat)) : 0;
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
+                <KpiCard label="Всего приёмов"  value={String(totalPrimary + totalRepeat)} icon="CalendarCheck" accent="hsl(199,85%,38%)" />
+                <KpiCard label="Первичных"       value={String(totalPrimary)}              icon="UserPlus"      accent="hsl(162,60%,40%)" />
+                <KpiCard label="Повторных"       value={String(totalRepeat)}               icon="RefreshCw"     accent="hsl(38,92%,50%)" />
+                <KpiCard label="Выручка (факт)"  value={fmtRub(totalRevenue)}              icon="Banknote"      accent="hsl(162,60%,40%)" />
+                <KpiCard label="Ср. чек"         value={fmtRub(avgCheck)}                  icon="Receipt"       accent="hsl(199,85%,38%)" />
+              </div>
+            );
+          })()}
 
           {/* Таблица по специализациям */}
           <div>
@@ -575,10 +633,8 @@ function DashboardSection() {
             <h3 className="font-semibold text-sm text-foreground mb-4">Лиды и конверсия — {MONTH_DATA.month}</h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
-                { label: "Всего лидов",    val: MONTH_DATA.leads.total,      color: "hsl(199,85%,38%)" },
-                { label: "Записались",     val: MONTH_DATA.leads.converted,  color: "hsl(162,60%,40%)" },
-                { label: "Травматология",  val: MONTH_DATA.leads.trauma,     color: "#1a9cbe" },
-                { label: "Неврология",     val: MONTH_DATA.leads.neuro,      color: "#e67e22" },
+                { label: "Всего лидов",  val: MONTH_DATA.leads.total,     color: "hsl(199,85%,38%)" },
+                { label: "Записались",   val: MONTH_DATA.leads.converted,  color: "hsl(162,60%,40%)" },
               ].map((l, i) => (
                 <div key={i} className="text-center p-3 rounded-lg bg-muted/20 border border-border/50">
                   <p className="text-2xl font-bold" style={{ color: l.color }}>{l.val}</p>
