@@ -638,32 +638,168 @@ function fmtMoney(n: number) {
   return n.toLocaleString("ru-RU") + " ₽";
 }
 
+// ─── Вспомогательный хук для отчёта ─────────────────────────────────────────
+function buildReportTree(filtered: typeof REPORT_DATA, type: "primary" | "repeat") {
+  const rows = filtered.filter(r => r.type === type);
+  const specMap = new Map<string, { count: number; sum: number; doctors: { doc: typeof REPORT_DOCTORS[0]; count: number; sum: number }[] }>();
+  rows.forEach(row => {
+    const doc = REPORT_DOCTORS.find(d => d.id === row.doctorId)!;
+    const spec = doc.specialization;
+    if (!specMap.has(spec)) specMap.set(spec, { count: 0, sum: 0, doctors: [] });
+    const entry = specMap.get(spec)!;
+    entry.count += row.count;
+    entry.sum   += row.count * row.priceEach;
+    entry.doctors.push({ doc, count: row.count, sum: row.count * row.priceEach });
+  });
+  return Array.from(specMap.entries()).map(([spec, data]) => ({ spec, ...data }));
+}
+
+// ─── Excel export ─────────────────────────────────────────────────────────────
+function exportToExcel(
+  dateFrom: string,
+  dateTo: string,
+  primaryTree: ReturnType<typeof buildReportTree>,
+  repeatTree:  ReturnType<typeof buildReportTree>,
+  grandTotal: { count: number; sum: number },
+) {
+  const rows: string[][] = [
+    ["Отчёт по приёмам"],
+    [`Период: ${dateFrom} — ${dateTo}`],
+    [],
+    ["Тип", "Специализация", "Врач", "Кол-во приёмов", "Сумма (₽)"],
+  ];
+
+  const addGroup = (label: string, tree: ReturnType<typeof buildReportTree>) => {
+    const total = tree.reduce((s, g) => ({ count: s.count + g.count, sum: s.sum + g.sum }), { count: 0, sum: 0 });
+    rows.push([label, "", "", String(total.count), String(total.sum)]);
+    tree.forEach(group => {
+      rows.push(["", group.spec, "", String(group.count), String(group.sum)]);
+      group.doctors.forEach(d => {
+        rows.push(["", "", d.doc.name, String(d.count), String(d.sum)]);
+      });
+    });
+  };
+
+  addGroup("Первичный приём", primaryTree);
+  addGroup("Повторный приём", repeatTree);
+  rows.push([]);
+  rows.push(["Итого", "", "", String(grandTotal.count), String(grandTotal.sum)]);
+
+  const csv = "\uFEFF" + rows.map(r => r.map(c => `"${c}"`).join(";")).join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `otchet_priemy_${dateFrom}_${dateTo}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ─── Отчёт по приёмам ────────────────────────────────────────────────────────
 function AppointmentsReport() {
-  const today = new Date(2026, 4, 21);
   const [dateFrom, setDateFrom] = useState(`2026-05-01`);
   const [dateTo,   setDateTo]   = useState(`2026-05-21`);
   const [selectedDocs, setSelectedDocs] = useState<number[]>(REPORT_DOCTORS.map(d => d.id));
   const [expandedPrimary, setExpandedPrimary] = useState(false);
   const [expandedRepeat,  setExpandedRepeat]  = useState(false);
+  // expandedSpecs: Set of keys "primary|Терапевт" etc.
+  const [expandedSpecs, setExpandedSpecs] = useState<Set<string>>(new Set());
   const [docsOpen, setDocsOpen] = useState(true);
 
-  const toggleDoc = (id: number) =>
+  const toggleDoc  = (id: number) =>
     setSelectedDocs(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggleSpec = (key: string) =>
+    setExpandedSpecs(prev => { const s = new Set(prev); if (s.has(key)) { s.delete(key); } else { s.add(key); } return s; });
 
-  const filtered = REPORT_DATA.filter(r => selectedDocs.includes(r.doctorId));
-
-  const primaryRows = filtered.filter(r => r.type === "primary");
-  const repeatRows  = filtered.filter(r => r.type === "repeat");
-
-  const primaryTotal = { count: primaryRows.reduce((s, r) => s + r.count, 0), sum: primaryRows.reduce((s, r) => s + r.count * r.priceEach, 0) };
-  const repeatTotal  = { count: repeatRows.reduce((s,  r) => s + r.count, 0), sum: repeatRows.reduce((s,  r) => s + r.count * r.priceEach, 0) };
+  const filtered     = REPORT_DATA.filter(r => selectedDocs.includes(r.doctorId));
+  const primaryTree  = buildReportTree(filtered, "primary");
+  const repeatTree   = buildReportTree(filtered, "repeat");
+  const primaryTotal = primaryTree.reduce((s, g) => ({ count: s.count + g.count, sum: s.sum + g.sum }), { count: 0, sum: 0 });
+  const repeatTotal  = repeatTree.reduce( (s, g) => ({ count: s.count + g.count, sum: s.sum + g.sum }), { count: 0, sum: 0 });
   const grandTotal   = { count: primaryTotal.count + repeatTotal.count, sum: primaryTotal.sum + repeatTotal.sum };
+
+  const ColHeader = () => (
+    <div className="grid items-center border-b border-border bg-muted/30 sticky top-0 z-10"
+      style={{ gridTemplateColumns: "1fr 100px 140px" }}>
+      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider px-5 py-2">Тип / Специализация / Врач</span>
+      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right py-2 pr-4">Кол-во</span>
+      <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right py-2 pr-5">Сумма</span>
+    </div>
+  );
+
+  const TypeRow = ({ label, total, expanded, onToggle, accent }: {
+    label: string; total: { count: number; sum: number };
+    expanded: boolean; onToggle: () => void; accent: string;
+  }) => (
+    <button onClick={onToggle}
+      className="w-full grid items-center hover:bg-muted/30 transition-colors"
+      style={{ gridTemplateColumns: "1fr 100px 140px" }}>
+      <div className="flex items-center gap-2 px-5 py-3">
+        <div className="w-5 h-5 rounded flex items-center justify-center border shrink-0 transition-colors"
+          style={expanded ? { background: accent, borderColor: accent } : { borderColor: "hsl(var(--border))" }}>
+          <Icon name={expanded ? "Minus" : "Plus"} size={11} className={expanded ? "text-white" : "text-muted-foreground"} />
+        </div>
+        <span className="text-sm font-semibold text-foreground">{label}</span>
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+          style={{ background: accent + "20", color: accent }}>{total.count} шт</span>
+      </div>
+      <span className="text-sm font-bold text-foreground text-right pr-4">{total.count}</span>
+      <span className="text-sm font-bold text-primary text-right pr-5">{fmtMoney(total.sum)}</span>
+    </button>
+  );
+
+  const SpecRow = ({ specKey, spec, count, sum, expanded }: {
+    specKey: string; spec: string; count: number; sum: number; expanded: boolean;
+  }) => (
+    <button onClick={() => toggleSpec(specKey)}
+      className="w-full grid items-center hover:bg-muted/20 transition-colors border-t border-border/40"
+      style={{ gridTemplateColumns: "1fr 100px 140px", background: "hsl(var(--muted)/0.08)" }}>
+      <div className="flex items-center gap-2 pl-12 pr-5 py-2.5">
+        <div className="w-4 h-4 rounded flex items-center justify-center border border-border/60 shrink-0 transition-colors"
+          style={expanded ? { background: "hsl(var(--muted-foreground))", borderColor: "hsl(var(--muted-foreground))" } : {}}>
+          <Icon name={expanded ? "Minus" : "Plus"} size={9} className={expanded ? "text-white" : "text-muted-foreground"} />
+        </div>
+        <span className="text-sm text-foreground font-medium">{spec}</span>
+      </div>
+      <span className="text-sm text-foreground text-right pr-4">{count}</span>
+      <span className="text-sm text-foreground font-medium text-right pr-5">{fmtMoney(sum)}</span>
+    </button>
+  );
+
+  const DoctorRow = ({ doc, count, sum }: { doc: typeof REPORT_DOCTORS[0]; count: number; sum: number }) => (
+    <div className="grid items-center border-t border-border/30 hover:bg-muted/10 transition-colors"
+      style={{ gridTemplateColumns: "1fr 100px 140px", background: "hsl(var(--card))" }}>
+      <div className="flex items-center gap-2 pl-20 pr-5 py-2">
+        <div className="w-2 h-2 rounded-full shrink-0" style={{ background: doc.color }} />
+        <span className="text-sm text-foreground">{doc.name}</span>
+        <span className="text-[10px] text-muted-foreground">{doc.specialization}</span>
+      </div>
+      <span className="text-sm text-muted-foreground text-right pr-4">{count}</span>
+      <span className="text-sm text-foreground text-right pr-5">{fmtMoney(sum)}</span>
+    </div>
+  );
+
+  const renderTree = (tree: ReturnType<typeof buildReportTree>, typeKey: "primary" | "repeat") => (
+    <>
+      {tree.map(group => {
+        const specKey = `${typeKey}|${group.spec}`;
+        const specExpanded = expandedSpecs.has(specKey);
+        return (
+          <div key={specKey}>
+            <SpecRow specKey={specKey} spec={group.spec} count={group.count} sum={group.sum} expanded={specExpanded} />
+            {specExpanded && group.doctors.map(d => (
+              <DoctorRow key={d.doc.id} doc={d.doc} count={d.count} sum={d.sum} />
+            ))}
+          </div>
+        );
+      })}
+    </>
+  );
 
   return (
     <div className="flex gap-0 h-full" style={{ minHeight: 500 }}>
 
-      {/* ── Левая панель фильтров (как в расписании) ── */}
+      {/* ── Левая панель фильтров ── */}
       <div className="w-52 shrink-0 border-r border-border bg-muted/20 flex flex-col rounded-l-xl overflow-y-auto scrollbar-thin">
 
         {/* Период */}
@@ -681,12 +817,11 @@ function AppointmentsReport() {
                 className="w-full text-xs border border-border rounded px-2 py-1 bg-background outline-none focus:border-primary" />
             </div>
           </div>
-          {/* Быстрые периоды */}
           <div className="flex flex-wrap gap-1 mt-2">
             {[
-              { label: "Сегодня", from: `2026-05-21`, to: `2026-05-21` },
-              { label: "Неделя",  from: `2026-05-15`, to: `2026-05-21` },
-              { label: "Месяц",   from: `2026-05-01`, to: `2026-05-31` },
+              { label: "Сегодня", from: "2026-05-21", to: "2026-05-21" },
+              { label: "Неделя",  from: "2026-05-15", to: "2026-05-21" },
+              { label: "Месяц",   from: "2026-05-01", to: "2026-05-31" },
             ].map(p => (
               <button key={p.label}
                 onClick={() => { setDateFrom(p.from); setDateTo(p.to); }}
@@ -702,8 +837,7 @@ function AppointmentsReport() {
 
         {/* Врачи */}
         <div className="border-b border-border">
-          <button
-            onClick={() => setDocsOpen(v => !v)}
+          <button onClick={() => setDocsOpen(v => !v)}
             className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/40 transition-colors">
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Врачи</span>
             <Icon name={docsOpen ? "ChevronUp" : "ChevronDown"} size={11} className="text-muted-foreground" />
@@ -737,19 +871,25 @@ function AppointmentsReport() {
           )}
         </div>
 
-        {/* Сформировать */}
-        <div className="p-3 mt-auto">
+        {/* Кнопки */}
+        <div className="p-3 mt-auto space-y-2">
           <button className="w-full py-1.5 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
             style={{ background: "linear-gradient(90deg, hsl(199,85%,38%), hsl(162,60%,40%))" }}>
             Сформировать
           </button>
+          <button
+            onClick={() => exportToExcel(dateFrom, dateTo, primaryTree, repeatTree, grandTotal)}
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold border border-border hover:bg-muted transition-colors text-foreground">
+            <Icon name="FileSpreadsheet" size={13} />
+            Выгрузить в Excel
+          </button>
         </div>
       </div>
 
-      {/* ── Правая: таблица отчёта ── */}
+      {/* ── Правая: таблица ── */}
       <div className="flex-1 flex flex-col overflow-hidden rounded-r-xl">
 
-        {/* Шапка отчёта */}
+        {/* Шапка */}
         <div className="px-5 py-3 border-b border-border bg-card flex items-center justify-between shrink-0">
           <div>
             <h2 className="font-bold text-sm text-foreground">Отчёт по приёмам</h2>
@@ -757,7 +897,7 @@ function AppointmentsReport() {
               {dateFrom} — {dateTo} · {selectedDocs.length} врач{selectedDocs.length === 1 ? "" : selectedDocs.length < 5 ? "а" : "ей"}
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-4">
             <div className="text-right">
               <p className="text-[10px] text-muted-foreground">Всего приёмов</p>
               <p className="text-base font-bold text-foreground">{grandTotal.count}</p>
@@ -771,106 +911,32 @@ function AppointmentsReport() {
 
         {/* Таблица */}
         <div className="flex-1 overflow-y-auto scrollbar-thin bg-card">
+          <ColHeader />
 
-          {/* Заголовки колонок */}
-          <div className="grid grid-cols-[1fr_auto_auto] gap-x-6 px-5 py-2 border-b border-border bg-muted/30 sticky top-0 z-10">
-            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Тип / Врач</span>
-            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right w-24">Кол-во</span>
-            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right w-32">Сумма</span>
-          </div>
-
-          {/* ── Первичный приём ── */}
+          {/* Первичный */}
           <div className="border-b border-border">
-            <button
-              onClick={() => setExpandedPrimary(v => !v)}
-              className="w-full grid grid-cols-[1fr_auto_auto] gap-x-6 px-5 py-3 hover:bg-muted/30 transition-colors items-center"
-            >
-              <div className="flex items-center gap-2 text-left">
-                <div className="w-5 h-5 rounded flex items-center justify-center border border-border hover:bg-muted transition-colors shrink-0"
-                  style={expandedPrimary ? { background: "hsl(199,85%,38%)", borderColor: "hsl(199,85%,38%)" } : {}}>
-                  <Icon name={expandedPrimary ? "Minus" : "Plus"} size={11}
-                    className={expandedPrimary ? "text-white" : "text-muted-foreground"} />
-                </div>
-                <span className="text-sm font-semibold text-foreground">Первичный приём</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
-                  style={{ background: "hsl(199,85%,38%,0.12)", color: "hsl(199,85%,38%)" }}>
-                  {primaryTotal.count} шт
-                </span>
-              </div>
-              <span className="text-sm font-bold text-foreground text-right w-24">{primaryTotal.count}</span>
-              <span className="text-sm font-bold text-primary text-right w-32">{fmtMoney(primaryTotal.sum)}</span>
-            </button>
-
+            <TypeRow label="Первичный приём" total={primaryTotal} expanded={expandedPrimary}
+              onToggle={() => setExpandedPrimary(v => !v)} accent="hsl(199,85%,38%)" />
             {expandedPrimary && (
-              <div className="bg-muted/10">
-                {primaryRows.map(row => {
-                  const doc = REPORT_DOCTORS.find(d => d.id === row.doctorId)!;
-                  return (
-                    <div key={row.doctorId}
-                      className="grid grid-cols-[1fr_auto_auto] gap-x-6 px-5 py-2.5 border-t border-border/50 hover:bg-muted/20 transition-colors items-center">
-                      <div className="flex items-center gap-2 pl-7">
-                        <div className="w-2 h-2 rounded-full shrink-0" style={{ background: doc.color }} />
-                        <span className="text-sm text-foreground">{doc.name}</span>
-                        <span className="text-[10px] text-muted-foreground">{doc.specialization}</span>
-                      </div>
-                      <span className="text-sm text-foreground text-right w-24">{row.count}</span>
-                      <span className="text-sm font-medium text-foreground text-right w-32">{fmtMoney(row.count * row.priceEach)}</span>
-                    </div>
-                  );
-                })}
-              </div>
+              <div>{renderTree(primaryTree, "primary")}</div>
             )}
           </div>
 
-          {/* ── Повторный приём ── */}
+          {/* Повторный */}
           <div className="border-b border-border">
-            <button
-              onClick={() => setExpandedRepeat(v => !v)}
-              className="w-full grid grid-cols-[1fr_auto_auto] gap-x-6 px-5 py-3 hover:bg-muted/30 transition-colors items-center"
-            >
-              <div className="flex items-center gap-2 text-left">
-                <div className="w-5 h-5 rounded flex items-center justify-center border border-border hover:bg-muted transition-colors shrink-0"
-                  style={expandedRepeat ? { background: "hsl(162,60%,40%)", borderColor: "hsl(162,60%,40%)" } : {}}>
-                  <Icon name={expandedRepeat ? "Minus" : "Plus"} size={11}
-                    className={expandedRepeat ? "text-white" : "text-muted-foreground"} />
-                </div>
-                <span className="text-sm font-semibold text-foreground">Повторный приём</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
-                  style={{ background: "hsl(162,60%,40%,0.12)", color: "hsl(162,60%,40%)" }}>
-                  {repeatTotal.count} шт
-                </span>
-              </div>
-              <span className="text-sm font-bold text-foreground text-right w-24">{repeatTotal.count}</span>
-              <span className="text-sm font-bold text-primary text-right w-32">{fmtMoney(repeatTotal.sum)}</span>
-            </button>
-
+            <TypeRow label="Повторный приём" total={repeatTotal} expanded={expandedRepeat}
+              onToggle={() => setExpandedRepeat(v => !v)} accent="hsl(162,60%,40%)" />
             {expandedRepeat && (
-              <div className="bg-muted/10">
-                {repeatRows.map(row => {
-                  const doc = REPORT_DOCTORS.find(d => d.id === row.doctorId)!;
-                  return (
-                    <div key={row.doctorId}
-                      className="grid grid-cols-[1fr_auto_auto] gap-x-6 px-5 py-2.5 border-t border-border/50 hover:bg-muted/20 transition-colors items-center">
-                      <div className="flex items-center gap-2 pl-7">
-                        <div className="w-2 h-2 rounded-full shrink-0" style={{ background: doc.color }} />
-                        <span className="text-sm text-foreground">{doc.name}</span>
-                        <span className="text-[10px] text-muted-foreground">{doc.specialization}</span>
-                      </div>
-                      <span className="text-sm text-foreground text-right w-24">{row.count}</span>
-                      <span className="text-sm font-medium text-foreground text-right w-32">{fmtMoney(row.count * row.priceEach)}</span>
-                    </div>
-                  );
-                })}
-              </div>
+              <div>{renderTree(repeatTree, "repeat")}</div>
             )}
           </div>
 
-          {/* ── Итого ── */}
-          <div className="grid grid-cols-[1fr_auto_auto] gap-x-6 px-5 py-3 items-center"
-            style={{ background: "hsl(199,85%,38%,0.05)", borderTop: "2px solid hsl(var(--border))" }}>
-            <span className="text-sm font-bold text-foreground">Итого</span>
-            <span className="text-sm font-bold text-foreground text-right w-24">{grandTotal.count}</span>
-            <span className="text-base font-bold text-primary text-right w-32">{fmtMoney(grandTotal.sum)}</span>
+          {/* Итого */}
+          <div className="grid items-center"
+            style={{ gridTemplateColumns: "1fr 100px 140px", background: "hsl(199,85%,38%,0.05)", borderTop: "2px solid hsl(var(--border))" }}>
+            <span className="text-sm font-bold text-foreground px-5 py-3">Итого</span>
+            <span className="text-sm font-bold text-foreground text-right pr-4">{grandTotal.count}</span>
+            <span className="text-base font-bold text-primary text-right pr-5">{fmtMoney(grandTotal.sum)}</span>
           </div>
         </div>
       </div>
