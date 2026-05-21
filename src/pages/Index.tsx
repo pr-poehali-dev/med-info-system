@@ -2048,12 +2048,7 @@ function ClinicAnalysisReport() {
   const dateLabel = selD.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const totalCols = prevMonthCols.length + 1; // предыдущие + текущий
 
-  // Цвет ячейки по сравнению с предыдущим месяцем
-  const hlVsPrev = (curr: number, prev: number): "green"|"amber"|"red" => {
-    if (prev === 0) return "amber";
-    const d = (curr - prev) / prev;
-    return d >= 0.05 ? "green" : d >= -0.1 ? "amber" : "red";
-  };
+
 
   // ── Компоненты ──────────────────────────────────────────────────────────────
 
@@ -2076,30 +2071,33 @@ function ClinicAnalysisReport() {
     );
   };
 
-  // Ячейка предыдущего месяца — маленький шрифт
-  const PrevCell = ({ val, fmt, refVal }: { val: number; fmt: "rub"|"num"|"pct"; refVal?: number }) => {
-    const txt = fmt === "rub" ? (val ? fmtRub(val) : "—") : fmt === "pct" ? (val ? `${val}%` : "—") : (val ? String(val) : "—");
-    let bg = "";
-    const fg = "hsl(var(--muted-foreground))";
-    if (refVal !== undefined && val > 0 && refVal > 0) {
-      const hl = hlVsPrev(refVal, val);
-      bg = hl === "green" ? "#dcfce7" : hl === "amber" ? "#fef9c3" : "#fee2e2";
+  // Градиентный цвет ячейки: 0 = красный, 1 = зелёный (по позиции в ранге)
+  const gradientColor = (rank: number, total: number, isBg: boolean) => {
+    if (total <= 1) return isBg ? "" : "hsl(var(--foreground))";
+    // rank: 0 = минимум (красный), total-1 = максимум (зелёный)
+    const t = rank / (total - 1); // 0..1
+    if (isBg) {
+      if (t >= 0.75) return "#dcfce7";       // зелёный
+      if (t >= 0.4)  return "#fef9c3";       // жёлтый
+      return "#fee2e2";                       // красный
+    } else {
+      if (t >= 0.75) return "#15803d";
+      if (t >= 0.4)  return "#92400e";
+      return "#dc2626";
     }
-    return (
-      <td className="px-2 py-2.5 text-center whitespace-nowrap" style={{ background: bg }}>
-        <span className="text-[11px]" style={{ color: fg }}>{txt}</span>
-      </td>
-    );
   };
 
-  // Ячейка текущего месяца — крупнее, цветная
-  const CurrCell = ({ val, fmt, hl }: { val: number; fmt: "rub"|"num"|"pct"; hl?: "green"|"amber"|"red"|"blue"|"none" }) => {
+  // Ячейка с градиентным цветом по рангу среди всех значений в строке
+  const RankedCell = ({ val, fmt, rank, total, isCurr }: {
+    val: number; fmt: "rub"|"num"|"pct"; rank: number; total: number; isCurr: boolean;
+  }) => {
     const txt = fmt === "rub" ? (val ? fmtRub(val) : "—") : fmt === "pct" ? (val ? `${val}%` : "—") : (val ? String(val) : "—");
-    const bg = hl === "green" ? "#dcfce7" : hl === "amber" ? "#fef9c3" : hl === "red" ? "#fee2e2" : hl === "blue" ? "hsl(199,85%,38%,0.1)" : "";
-    const fg = hl === "green" ? "#15803d" : hl === "amber" ? "#92400e" : hl === "red" ? "#dc2626" : hl === "blue" ? "hsl(199,85%,38%)" : "hsl(var(--foreground))";
+    const bg  = val > 0 ? gradientColor(rank, total, true)  : "";
+    const fg  = val > 0 ? gradientColor(rank, total, false) : "hsl(var(--muted-foreground))";
     return (
-      <td className="px-3 py-2.5 text-sm font-semibold text-center whitespace-nowrap" style={{ background: bg }}>
-        <span style={{ color: fg }}>{txt}</span>
+      <td className={`text-center whitespace-nowrap ${isCurr ? "px-3 py-2.5 text-sm font-semibold" : "px-2 py-2.5"}`}
+        style={{ background: bg, borderLeft: isCurr ? "2px solid hsl(199,85%,38%,0.3)" : undefined }}>
+        <span className={isCurr ? "text-sm font-semibold" : "text-[11px]"} style={{ color: fg }}>{txt}</span>
       </td>
     );
   };
@@ -2113,12 +2111,12 @@ function ClinicAnalysisReport() {
     </tr>
   );
 
-  // Строка данных: значение = функция от накопленных данных
+  // Строка данных с ранжированием цветов по всем месяцам
   const DataRow = ({
     label, bold, indent, specKey,
-    getVal,   // (accum) → число для данной колонки
+    getVal,
     fmt,
-    hlCurr,
+    hlCurr,   // фиксированный цвет (план/факт/%) — не ранжируется
     isRevColor,
   }: {
     label: string; bold?: boolean; indent?: number; specKey?: string;
@@ -2129,16 +2127,45 @@ function ClinicAnalysisReport() {
   }) => {
     const prevVals = prevMonthCols.map(c => getVal(c.accum, c.plan, c.shouldBe, c.day, c.daysInM));
     const currVal  = getVal(currAccum, currPlan, currShouldBe, selDay, currDaysInM);
-    const prevLast = prevVals[prevVals.length - 1] ?? 0;
-    let hlFinal: "green"|"amber"|"red"|"blue"|"none" = hlCurr ?? "none";
-    if (!hlCurr && isRevColor && prevLast > 0) {
-      hlFinal = hlVsPrev(currVal, prevLast);
-    }
+    const allVals  = [...prevVals, currVal];
+    const total    = allVals.length;
+
+    // Ранжируем: сортируем ненулевые значения, определяем позицию каждого
+    const nonZero  = allVals.filter(v => v > 0).sort((a, b) => a - b);
+    const getRank  = (v: number) => v > 0 ? nonZero.indexOf(v) : -1;
+
     return (
       <tr className="border-b border-border/40 hover:bg-muted/5">
         <RowLabel label={label} bold={bold} indent={indent} specKey={specKey} />
-        {prevVals.map((v, i) => <PrevCell key={i} val={v} fmt={fmt} refVal={i === prevVals.length - 1 ? currVal : undefined} />)}
-        <CurrCell val={currVal} fmt={fmt} hl={hlFinal} />
+        {prevVals.map((v, i) => {
+          if (hlCurr !== undefined) {
+            // Фиксированные строки (план/факт/%) — без градиента
+            const txt = fmt === "rub" ? (v ? fmtRub(v) : "—") : fmt === "pct" ? (v ? `${v}%` : "—") : (v ? String(v) : "—");
+            return (
+              <td key={i} className="px-2 py-2.5 text-center whitespace-nowrap">
+                <span className="text-[11px] text-muted-foreground">{txt}</span>
+              </td>
+            );
+          }
+          const rank = getRank(v);
+          return <RankedCell key={i} val={v} fmt={fmt} rank={rank < 0 ? 0 : rank} total={nonZero.length} isCurr={false} />;
+        })}
+        {/* Текущая колонка */}
+        {hlCurr !== undefined ? (
+          (() => {
+            const txt = fmt === "rub" ? (currVal ? fmtRub(currVal) : "—") : fmt === "pct" ? (currVal ? `${currVal}%` : "—") : (currVal ? String(currVal) : "—");
+            const bg = hlCurr === "green" ? "#dcfce7" : hlCurr === "amber" ? "#fef9c3" : hlCurr === "red" ? "#fee2e2" : hlCurr === "blue" ? "hsl(199,85%,38%,0.1)" : "";
+            const fg = hlCurr === "green" ? "#15803d" : hlCurr === "amber" ? "#92400e" : hlCurr === "red" ? "#dc2626" : hlCurr === "blue" ? "hsl(199,85%,38%)" : "hsl(var(--foreground))";
+            return (
+              <td className="px-3 py-2.5 text-sm font-semibold text-center whitespace-nowrap"
+                style={{ background: bg, borderLeft: "2px solid hsl(199,85%,38%,0.3)" }}>
+                <span style={{ color: fg }}>{txt}</span>
+              </td>
+            );
+          })()
+        ) : (
+          <RankedCell val={currVal} fmt={fmt} rank={getRank(currVal) < 0 ? 0 : getRank(currVal)} total={nonZero.length} isCurr={true} />
+        )}
       </tr>
     );
   };
@@ -2153,9 +2180,9 @@ function ClinicAnalysisReport() {
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-green-200" />Лучше пред. мес.</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-yellow-100 border border-yellow-200" />Примерно так же</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-red-200" />Хуже пред. мес.</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-green-200" />Максимум</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-yellow-100 border border-yellow-200" />Середина</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-red-200" />Минимум</span>
           </div>
           <div className="flex items-center gap-1.5 border border-border rounded-lg px-2.5 py-1.5 bg-card">
             <Icon name="CalendarDays" size={14} className="text-muted-foreground" />
@@ -2182,7 +2209,7 @@ function ClinicAnalysisReport() {
                 <th className="text-center px-3 py-3 min-w-[140px]"
                   style={{ background: "hsl(199,85%,38%,0.08)", borderLeft: "2px solid hsl(199,85%,38%,0.3)" }}>
                   <div className="text-xs font-bold uppercase" style={{ color: "hsl(199,85%,38%)" }}>
-                    {MONTHS_PLAN[selMon].slice(0,3)} (факт)
+                    {MONTHS_PLAN[selMon].slice(0,3)}
                   </div>
                   <div className="text-[10px] font-normal text-muted-foreground normal-case">по {selDay}-е число</div>
                 </th>
