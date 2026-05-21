@@ -6,6 +6,8 @@ import Icon from "@/components/ui/icon";
 type ViewDays = 1 | 2 | 3 | 7 | 14 | 30;
 type GroupBy = "doctor" | "specialization";
 type StepMin = 5 | 10 | 15 | 20 | 30 | 40 | 45 | 60 | 90;
+type VisitType = "primary" | "repeat" | "other" | "certificate" | "checkup";
+type ApptStatus = "unconfirmed" | "confirmed" | "arrived" | "done" | "billed" | "paid" | "cancelled" | "noshow";
 
 interface Doctor {
   id: number;
@@ -13,6 +15,9 @@ interface Doctor {
   shortName: string;
   specialization: string;
   color: string;
+  primaryDuration?: number;
+  repeatDuration?: number;
+  price?: number;
 }
 
 interface Appointment {
@@ -34,14 +39,415 @@ interface TooltipState {
   y: number;
 }
 
+interface NewApptState {
+  doctorId: number;
+  startMin: number;
+}
+
+// ─── Константы для модалки ───────────────────────────────────────────────────
+
+const VISIT_TYPES: { value: VisitType; label: string }[] = [
+  { value: "primary",     label: "Первичный приём" },
+  { value: "repeat",      label: "Повторный приём" },
+  { value: "other",       label: "Прочее" },
+  { value: "certificate", label: "Оформление справки" },
+  { value: "checkup",     label: "Профосмотр" },
+];
+
+const APPT_STATUSES: { value: ApptStatus; label: string; color: string }[] = [
+  { value: "unconfirmed", label: "Не подтверждён", color: "#f59e0b" },
+  { value: "confirmed",   label: "Подтверждён",    color: "#3b82f6" },
+  { value: "arrived",     label: "Пришёл",         color: "#8b5cf6" },
+  { value: "done",        label: "Приём завершён",  color: "#10b981" },
+  { value: "billed",      label: "Счёт выставлен",  color: "#6366f1" },
+  { value: "paid",        label: "Счёт оплачен",    color: "#059669" },
+  { value: "cancelled",   label: "Отменён",         color: "#ef4444" },
+  { value: "noshow",      label: "Неявка",          color: "#9ca3af" },
+];
+
+const SOURCES = ["medods", "DocDoc", "ProDoctors", "Medods онлайн-запись", "Виджет", "Звонок", "Сайт", "Сарафан"];
+const GENDERS = ["Мужской", "Женский"];
+
+// ─── Компонент модального окна ───────────────────────────────────────────────
+
+function AppointmentModal({
+  doctorId,
+  startMin,
+  onClose,
+  onSave,
+}: {
+  doctorId: number;
+  startMin: number;
+  onClose: () => void;
+  onSave: (appt: Appointment) => void;
+}) {
+  const doctor = DOCTORS.find(d => d.id === doctorId)!;
+
+  const [visitType,  setVisitType]  = useState<VisitType | null>(null);
+  const [timeStr,    setTimeStr]    = useState(minToTime(startMin));
+  const [duration,   setDuration]   = useState<number>(doctor.primaryDuration ?? 30);
+  const [lastName,   setLastName]   = useState("");
+  const [firstName,  setFirstName]  = useState("");
+  const [patronymic, setPatronymic] = useState("");
+  const [dob,        setDob]        = useState("");
+  const [phone,      setPhone]      = useState("");
+  const [gender,     setGender]     = useState<string>("Мужской");
+  const [onlineAllow, setOnlineAllow] = useState(true);
+  const [emkNum,     setEmkNum]     = useState("");
+  const [group,      setGroup]      = useState("");
+  const [email,      setEmail]      = useState("");
+  const [attendingDoc, setAttendingDoc] = useState("");
+  const [discount,   setDiscount]   = useState("");
+  const [legalRep,   setLegalRep]   = useState("");
+  const [serviceCard, setServiceCard] = useState("");
+  const [referral,   setReferral]   = useState("Реферал");
+  const [source,     setSource]     = useState<string>("medods");
+  const [dmc,        setDmc]        = useState(false);
+  const [apptStatus, setApptStatus] = useState<ApptStatus>("unconfirmed");
+  const [notifySms,  setNotifySms]  = useState(true);
+  const [remindSms,  setRemindSms]  = useState(true);
+
+  // При смене типа визита — меняем длительность
+  useEffect(() => {
+    if (!visitType) return;
+    if (visitType === "primary") setDuration(doctor.primaryDuration ?? 30);
+    else if (visitType === "repeat") setDuration(doctor.repeatDuration ?? 20);
+  }, [visitType, doctor]);
+
+  const fio = [lastName, firstName, patronymic].filter(Boolean).join(" ");
+  const canSave = visitType && timeStr && fio && phone;
+
+  const handleSave = () => {
+    if (!canSave) return;
+    const [hh, mm] = timeStr.split(":").map(Number);
+    const sm = hh * 60 + (mm || 0);
+    onSave({
+      id: Date.now(),
+      doctorId,
+      patientName: fio,
+      service: VISIT_TYPES.find(v => v.value === visitType)?.label ?? "",
+      startMin: sm,
+      durationMin: duration,
+      status: "scheduled",
+      isFirstVisit: visitType === "primary",
+      phone,
+      comment: serviceCard,
+    });
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" />
+      <div
+        className="relative bg-card rounded-xl shadow-2xl border border-border w-[900px] max-w-[98vw] max-h-[92vh] overflow-hidden flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Шапка */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0"
+          style={{ background: "linear-gradient(90deg, hsl(199,85%,38%,0.07), hsl(162,60%,40%,0.07))" }}>
+          <div className="flex items-center gap-2">
+            <Icon name="CalendarPlus" size={16} className="text-primary" />
+            <span className="font-bold text-sm text-foreground">Запись на приём</span>
+            <span className="text-xs text-muted-foreground ml-2">
+              {doctor.name} · {doctor.specialization}
+            </span>
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:bg-muted transition-colors">
+            <Icon name="X" size={16} className="text-muted-foreground" />
+          </button>
+        </div>
+
+        {/* Тело — 3 колонки */}
+        <div className="flex-1 overflow-y-auto scrollbar-thin">
+          <div className="grid grid-cols-3 divide-x divide-border min-h-full">
+
+            {/* ── Кол. 1: Данные пациента ── */}
+            <div className="p-4 space-y-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Пациент</p>
+
+              {/* ФИО */}
+              <div className="space-y-1.5">
+                {[
+                  { label: "Фамилия *", val: lastName, set: setLastName },
+                  { label: "Имя *",     val: firstName, set: setFirstName },
+                  { label: "Отчество",  val: patronymic, set: setPatronymic },
+                ].map(({ label, val, set }) => (
+                  <div key={label}>
+                    <label className="text-[10px] text-muted-foreground">{label}</label>
+                    <input value={val} onChange={e => set(e.target.value)}
+                      className="w-full text-xs border border-border rounded px-2 py-1 bg-background outline-none focus:border-primary" />
+                  </div>
+                ))}
+              </div>
+
+              {/* Дата рождения */}
+              <div>
+                <label className="text-[10px] text-muted-foreground">Дата рождения</label>
+                <input type="date" value={dob} onChange={e => setDob(e.target.value)}
+                  className="w-full text-xs border border-border rounded px-2 py-1 bg-background outline-none focus:border-primary" />
+              </div>
+
+              {/* Телефон */}
+              <div>
+                <label className="text-[10px] text-muted-foreground">Телефон *</label>
+                <input value={phone} onChange={e => setPhone(e.target.value)}
+                  placeholder="+7 (___) ___-__-__"
+                  className="w-full text-xs border border-border rounded px-2 py-1 bg-background outline-none focus:border-primary" />
+              </div>
+
+              {/* Пол */}
+              <div>
+                <label className="text-[10px] text-muted-foreground block mb-0.5">Пол</label>
+                <div className="flex gap-1">
+                  {GENDERS.map(g => (
+                    <button key={g} onClick={() => setGender(g)}
+                      className="flex-1 text-[11px] py-0.5 rounded border transition-colors"
+                      style={gender === g
+                        ? { background: "hsl(199,85%,38%)", color: "white", borderColor: "hsl(199,85%,38%)" }
+                        : { borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}>
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Онлайн-запись */}
+              <div>
+                <label className="text-[10px] text-muted-foreground block mb-0.5">Онлайн-запись</label>
+                <div className="flex gap-1">
+                  {[true, false].map(v => (
+                    <button key={String(v)} onClick={() => setOnlineAllow(v)}
+                      className="flex-1 text-[11px] py-0.5 rounded border transition-colors"
+                      style={onlineAllow === v
+                        ? { background: v ? "hsl(162,60%,40%)" : "#ef4444", color: "white", borderColor: v ? "hsl(162,60%,40%)" : "#ef4444" }
+                        : { borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}>
+                      {v ? "Разрешена" : "Запрещена"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-muted-foreground">Номер ЭМК</label>
+                <input value={emkNum} onChange={e => setEmkNum(e.target.value)}
+                  className="w-full text-xs border border-border rounded px-2 py-1 bg-background outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground">Группа</label>
+                <input value={group} onChange={e => setGroup(e.target.value)}
+                  className="w-full text-xs border border-border rounded px-2 py-1 bg-background outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground">Email</label>
+                <input value={email} onChange={e => setEmail(e.target.value)}
+                  className="w-full text-xs border border-border rounded px-2 py-1 bg-background outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground">Лечащий врач</label>
+                <select value={attendingDoc} onChange={e => setAttendingDoc(e.target.value)}
+                  className="w-full text-xs border border-border rounded px-2 py-1 bg-background outline-none">
+                  <option value="">—</option>
+                  {DOCTORS.map(d => <option key={d.id} value={d.shortName}>{d.shortName}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground">Скидка</label>
+                <input value={discount} onChange={e => setDiscount(e.target.value)}
+                  className="w-full text-xs border border-border rounded px-2 py-1 bg-background outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground">ФИО законного представителя</label>
+                <input value={legalRep} onChange={e => setLegalRep(e.target.value)}
+                  className="w-full text-xs border border-border rounded px-2 py-1 bg-background outline-none focus:border-primary" />
+              </div>
+            </div>
+
+            {/* ── Кол. 2: Центр (история + сервисная карта) ── */}
+            <div className="p-4 space-y-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Информация о визите</p>
+
+              {/* Время и длительность */}
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-[10px] text-muted-foreground">Время *</label>
+                  <input type="time" value={timeStr} onChange={e => setTimeStr(e.target.value)}
+                    className="w-full text-xs border border-border rounded px-2 py-1 bg-background outline-none focus:border-primary" />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] text-muted-foreground">Длительность (мин)</label>
+                  <input type="number" min={5} max={180} step={5} value={duration}
+                    onChange={e => setDuration(Number(e.target.value))}
+                    className="w-full text-xs border border-border rounded px-2 py-1 bg-background outline-none focus:border-primary" />
+                </div>
+              </div>
+
+              {/* Предыдущий визит */}
+              <div className="bg-muted/30 rounded-lg p-2.5 border border-border/50">
+                <p className="text-[10px] text-muted-foreground mb-0.5">Пред. визит</p>
+                <p className="text-[11px] text-foreground">—</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Пред. визит к данному специалисту</p>
+                <p className="text-[11px] text-foreground">—</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Специальные отметки</p>
+                <p className="text-[11px] text-foreground">—</p>
+              </div>
+
+              {/* Сервисная карта */}
+              <div>
+                <p className="text-[11px] font-semibold text-center py-1 rounded-t"
+                  style={{ background: "hsl(199,85%,38%)", color: "white" }}>Сервисная карта</p>
+                <textarea value={serviceCard} onChange={e => setServiceCard(e.target.value)}
+                  rows={5} placeholder="Записывайте сюда важную информацию о клиенте для улучшения сервиса."
+                  className="w-full text-xs border border-l border-r border-b border-border rounded-b px-2 py-1.5 bg-background outline-none focus:border-primary resize-none" />
+              </div>
+
+              {/* Направление */}
+              <div>
+                <label className="text-[10px] text-muted-foreground">Направление</label>
+                <div className="flex gap-1">
+                  <select value={referral} onChange={e => setReferral(e.target.value)}
+                    className="flex-1 text-xs border border-border rounded-l px-2 py-1 bg-background outline-none">
+                    <option>Реферал</option>
+                    <option>Без направления</option>
+                    <option>ОМС</option>
+                  </select>
+                  <button className="px-2 rounded-r border border-l-0 border-border hover:bg-muted"
+                    style={{ color: "hsl(199,85%,38%)" }}>
+                    <Icon name="Plus" size={13} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Источник привлечения */}
+              <div>
+                <label className="text-[10px] text-muted-foreground">Источник привлечения</label>
+                <select className="w-full text-xs border border-border rounded px-2 py-1 bg-background outline-none">
+                  <option value="">—</option>
+                  {SOURCES.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+
+              {/* ДМС */}
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="dmc" checked={dmc} onChange={e => setDmc(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded" />
+                <label htmlFor="dmc" className="text-[11px] text-foreground cursor-pointer">По ДМС</label>
+              </div>
+            </div>
+
+            {/* ── Кол. 3: Тип + статус + источник + уведомления ── */}
+            <div className="p-4 space-y-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Тип приёма *</p>
+
+              {/* Тип приёма */}
+              <div className="flex flex-wrap gap-1.5">
+                {VISIT_TYPES.map(vt => (
+                  <button
+                    key={vt.value}
+                    onClick={() => setVisitType(vt.value)}
+                    className="text-[11px] px-2 py-1 rounded-md border font-medium transition-colors"
+                    style={visitType === vt.value
+                      ? { background: "hsl(199,85%,38%)", color: "white", borderColor: "hsl(199,85%,38%)" }
+                      : { background: "hsl(var(--muted)/0.5)", color: "hsl(var(--foreground))", borderColor: "hsl(var(--border))" }}
+                  >
+                    {vt.label}
+                  </button>
+                ))}
+              </div>
+              {!visitType && (
+                <p className="text-[10px] text-red-500">Выберите тип приёма</p>
+              )}
+
+              {/* Статус */}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Статус *</p>
+                <div className="flex flex-wrap gap-1">
+                  {APPT_STATUSES.map(s => (
+                    <button key={s.value} onClick={() => setApptStatus(s.value)}
+                      className="text-[10px] px-2 py-0.5 rounded border font-medium transition-colors"
+                      style={apptStatus === s.value
+                        ? { background: s.color, color: "white", borderColor: s.color }
+                        : { borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}>
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Источник */}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Источник *</p>
+                <div className="flex flex-wrap gap-1">
+                  {SOURCES.slice(0, 6).map(s => (
+                    <button key={s} onClick={() => setSource(s)}
+                      className="text-[10px] px-2 py-0.5 rounded border font-medium transition-colors"
+                      style={source === s
+                        ? { background: "hsl(199,85%,38%)", color: "white", borderColor: "hsl(199,85%,38%)" }
+                        : { borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Уведомления */}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Уведомления</p>
+                <div className="space-y-1">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={remindSms} onChange={e => setRemindSms(e.target.checked)}
+                      className="w-3.5 h-3.5" />
+                    <span className="text-[11px]">Напомнить по SMS</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={notifySms} onChange={e => setNotifySms(e.target.checked)}
+                      className="w-3.5 h-3.5" />
+                    <span className="text-[11px]">Уведомить по SMS</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Подвал */}
+        <div className="flex items-center justify-between px-5 py-3 border-t border-border shrink-0 bg-muted/20">
+          <div className="flex gap-2">
+            <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-border hover:bg-muted transition-colors text-muted-foreground">
+              <Icon name="Trash2" size={13} />Очистить
+            </button>
+            <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-border hover:bg-muted transition-colors text-muted-foreground">
+              <Icon name="UserPen" size={13} />Ред. клиента
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={!canSave}
+              className="flex items-center gap-1.5 text-xs px-4 py-1.5 rounded font-medium text-white transition-opacity"
+              style={{ background: canSave ? "hsl(162,60%,40%)" : "hsl(var(--muted))", opacity: canSave ? 1 : 0.5, cursor: canSave ? "pointer" : "not-allowed" }}
+            >
+              <Icon name="Save" size={13} />Сохранить
+            </button>
+            <button onClick={onClose}
+              className="flex items-center gap-1.5 text-xs px-4 py-1.5 rounded font-medium border border-border hover:bg-muted transition-colors">
+              <Icon name="X" size={13} />Закрыть
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Данные ──────────────────────────────────────────────────────────────────
 
 const DOCTORS: Doctor[] = [
-  { id: 1, name: "Петров Андрей Викторович",   shortName: "Петров А.В.",  specialization: "Терапевт",       color: "#1a9cbe" },
-  { id: 2, name: "Белова Наталья Ивановна",    shortName: "Белова Н.И.",  specialization: "УЗИ-специалист", color: "#20a869" },
-  { id: 3, name: "Захаров Сергей Дмитриевич",  shortName: "Захаров С.Д.", specialization: "Кардиолог",      color: "#e67e22" },
-  { id: 4, name: "Орлова Юлия Максимовна",     shortName: "Орлова Ю.М.", specialization: "Гинеколог",      color: "#9b59b6" },
-  { id: 5, name: "Смирнов Павел Олегович",     shortName: "Смирнов П.О.", specialization: "Хирург",         color: "#c0392b" },
+  { id: 1, name: "Петров Андрей Викторович",   shortName: "Петров А.В.",  specialization: "Терапевт",       color: "#1a9cbe", primaryDuration: 30, repeatDuration: 20, price: 2500 },
+  { id: 2, name: "Белова Наталья Ивановна",    shortName: "Белова Н.И.",  specialization: "УЗИ-специалист", color: "#20a869", primaryDuration: 25, repeatDuration: 15, price: 3200 },
+  { id: 3, name: "Захаров Сергей Дмитриевич",  shortName: "Захаров С.Д.", specialization: "Кардиолог",      color: "#e67e22", primaryDuration: 30, repeatDuration: 20, price: 3000 },
+  { id: 4, name: "Орлова Юлия Максимовна",     shortName: "Орлова Ю.М.", specialization: "Гинеколог",      color: "#9b59b6", primaryDuration: 30, repeatDuration: 20, price: 3500 },
+  { id: 5, name: "Смирнов Павел Олегович",     shortName: "Смирнов П.О.", specialization: "Хирург",         color: "#c0392b", primaryDuration: 30, repeatDuration: 20, price: 2500 },
 ];
 
 const APPOINTMENTS: Appointment[] = [
@@ -205,10 +611,14 @@ export default function Schedule() {
   const [patientSearch, setPatientSearch] = useState("");
   const [tooltip, setTooltip]     = useState<TooltipState | null>(null);
   // Раскрывающиеся блоки в левой панели
-  const [specOpen, setSpecOpen]       = useState(true);
-  const [doctorsOpen, setDoctorsOpen] = useState(true);
+  const [specOpen, setSpecOpen]       = useState(false);
+  const [doctorsOpen, setDoctorsOpen] = useState(false);
   // Какие врачи отмечены (по умолчанию все)
   const [checkedDoctors, setCheckedDoctors] = useState<number[]>(DOCTORS.map(d => d.id));
+  // Записи (мутабельный state — новые добавляются)
+  const [appointments, setAppointments] = useState<Appointment[]>(APPOINTMENTS);
+  // Модалка новой записи
+  const [newAppt, setNewAppt] = useState<NewApptState | null>(null);
   const gridRef   = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const wrapRef   = useRef<HTMLDivElement>(null);
@@ -274,7 +684,7 @@ export default function Schedule() {
   const currentTimePx  = ((currentTimeMin - DAY_START) / step) * slotHeight;
 
   const getApptForSlot = (docIds: number[], slotMin: number): Appointment | undefined =>
-    APPOINTMENTS.find(a =>
+    appointments.find(a =>
       docIds.includes(a.doctorId) &&
       a.startMin <= slotMin &&
       a.startMin + a.durationMin > slotMin
@@ -474,22 +884,15 @@ export default function Schedule() {
           )}
         </div>
 
-        {/* Кнопка новая запись */}
-        <div className="p-2 border-t border-border shrink-0">
-          <button className="w-full flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium text-white transition-opacity hover:opacity-90"
-            style={{ background: "linear-gradient(90deg, hsl(199,85%,38%), hsl(162,60%,40%))" }}>
-            <Icon name="Plus" size={13} />Новая запись
-          </button>
-        </div>
       </div>
 
       {/* ═══ Правая: шапка + сетка ═══ */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Шапка: фиксированная колонка времени + скроллируемые врачи */}
-        <div className="flex shrink-0 border-b border-border" style={{ background: "hsl(var(--muted)/0.15)" }}>
-          {/* Фиксированная колонка времени */}
-          <div className="shrink-0 border-r border-border" style={{ width: 44 }} />
+        <div className="flex shrink-0 border-b border-border overflow-hidden" style={{ background: "hsl(var(--muted)/0.15)" }}>
+          {/* Заглушка под sticky колонку времени */}
+          <div className="shrink-0 border-r border-border bg-card z-20" style={{ width: 44 }} />
           {/* Скроллируемая область — overflow hidden, скролл синхронный с телом */}
           <div ref={headerRef} className="flex-1 overflow-hidden">
             {/* Структура: для каждого дня — один блок дата + врачи под ней */}
@@ -549,8 +952,8 @@ export default function Schedule() {
         {/* Сетка со скроллом */}
         <div ref={gridRef} className="flex-1 overflow-auto scrollbar-thin" onScroll={onGridScroll}>
           <div className="flex" style={{ minHeight: `${totalSlots * slotHeight}px` }}>
-            {/* Колонка времени */}
-            <div className="shrink-0 border-r border-border relative" style={{ width: 44 }}>
+            {/* Колонка времени — прилипает при горизонтальном скролле */}
+            <div className="shrink-0 border-r border-border relative bg-card z-20" style={{ width: 44, position: "sticky", left: 0 }}>
               {/* Линия текущего времени — маркер слева */}
               <div className="absolute right-0 z-10 flex items-center" style={{ top: `${currentTimePx}px` }}>
                 <div className="w-2 h-2 rounded-full bg-red-500 translate-x-1" />
@@ -578,7 +981,7 @@ export default function Schedule() {
             <div className="flex" style={{ width: `${columns.length * COL_WIDTH}px` }}>
               {columns.map((col, colIdx) => {
                 const pxPerMin = slotHeight / step;
-                const colAppts = APPOINTMENTS.filter(a => col.docIds.includes(a.doctorId));
+                const colAppts = appointments.filter(a => col.docIds.includes(a.doctorId));
                 // Последняя колонка дня — правая граница толще
                 const isLastOfDay = colIdx === columns.length - 1 ||
                   columns[colIdx + 1]?.dateIdx !== col.dateIdx;
@@ -607,14 +1010,21 @@ export default function Schedule() {
                     {Array.from({ length: totalSlots }, (_, si) => {
                       const slotMin = DAY_START + si * step;
                       const isHour  = slotMin % 60 === 0;
+                      const isBusy  = colAppts.some(a => a.startMin <= slotMin && a.startMin + a.durationMin > slotMin);
                       return (
                         <div
                           key={si}
-                          className={`absolute left-0 right-0 ${isHour ? "bg-muted/5" : ""} hover:bg-primary/[0.03] cursor-pointer`}
+                          className={`absolute left-0 right-0 ${isHour ? "bg-muted/5" : ""} ${!isBusy ? "hover:bg-primary/[0.06] cursor-pointer" : "cursor-default"}`}
                           style={{
                             top: si * slotHeight,
                             height: slotHeight,
                             borderBottom: `1px solid hsl(var(--border)/${isHour ? "0.5" : "0.2"})`,
+                          }}
+                          onClick={() => {
+                            if (!isBusy) {
+                              const docId = col.docIds[0];
+                              if (docId) setNewAppt({ doctorId: docId, startMin: slotMin });
+                            }
                           }}
                         />
                       );
@@ -731,6 +1141,16 @@ export default function Schedule() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ═══ Модальное окно записи ═══ */}
+      {newAppt && (
+        <AppointmentModal
+          doctorId={newAppt.doctorId}
+          startMin={newAppt.startMin}
+          onClose={() => setNewAppt(null)}
+          onSave={appt => setAppointments(prev => [...prev, appt])}
+        />
       )}
     </div>
   );

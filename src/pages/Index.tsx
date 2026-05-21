@@ -228,35 +228,37 @@ export default function Index({ user }: IndexProps) {
 
       {/* Main */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        {/* Topbar */}
-        <header className="bg-card border-b border-border flex items-center justify-between px-6 py-3.5 shrink-0">
-          <div>
-            <h1 className="text-lg font-bold text-foreground">
-              {navItems.find((n) => n.id === active)?.label || "Дашборд"}
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              {new Date().toLocaleDateString("ru-RU", {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              })}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button className="relative p-2 rounded-lg hover:bg-muted transition-colors">
-              <Icon name="Bell" size={18} className="text-muted-foreground" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500"></span>
-            </button>
-            <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity">
-              <Icon name="Plus" size={15} />
-              Новый приём
-            </button>
-          </div>
-        </header>
+        {/* Topbar — скрыт для расписания */}
+        {active !== "schedule" && (
+          <header className="bg-card border-b border-border flex items-center justify-between px-6 py-3.5 shrink-0">
+            <div>
+              <h1 className="text-lg font-bold text-foreground">
+                {navItems.find((n) => n.id === active)?.label || "Дашборд"}
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                {new Date().toLocaleDateString("ru-RU", {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button className="relative p-2 rounded-lg hover:bg-muted transition-colors">
+                <Icon name="Bell" size={18} className="text-muted-foreground" />
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500"></span>
+              </button>
+              <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity">
+                <Icon name="Plus" size={15} />
+                Новый приём
+              </button>
+            </div>
+          </header>
+        )}
 
         {/* Content */}
-        <div className={`flex-1 ${active === "schedule" ? "overflow-hidden flex flex-col" : "overflow-y-auto scrollbar-thin"} p-6`}>
+        <div className={`flex-1 ${active === "schedule" ? "overflow-hidden flex flex-col p-0" : "overflow-y-auto scrollbar-thin p-6"}`}>
           <div className={`animate-fade-in ${active === "schedule" ? "h-full flex flex-col" : "max-w-[1280px]"}`}>
             {active === "dashboard" && <DashboardSection />}
             {active === "schedule" && <Schedule />}
