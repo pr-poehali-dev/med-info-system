@@ -130,40 +130,40 @@ function MiniCalendar({ current, onChange }: { current: Date; onChange: (d: Date
   while (cells.length % 7 !== 0) cells.push(null);
 
   return (
-    <div className="px-1.5 py-1.5">
+    <div className="px-1.5 py-1">
       {/* Шапка */}
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex items-center justify-between mb-0.5">
         <button onClick={() => setMonth(d => new Date(d.getFullYear(), d.getMonth()-1, 1))}
           className="w-4 h-4 flex items-center justify-center rounded hover:bg-muted text-muted-foreground">
-          <Icon name="ChevronLeft" size={11} />
+          <Icon name="ChevronLeft" size={10} />
         </button>
-        <span className="text-[11px] font-semibold text-foreground">
+        <span className="text-[10px] font-semibold text-foreground">
           {MONTHS_RU[month.getMonth()]} {month.getFullYear()}
         </span>
         <button onClick={() => setMonth(d => new Date(d.getFullYear(), d.getMonth()+1, 1))}
           className="w-4 h-4 flex items-center justify-center rounded hover:bg-muted text-muted-foreground">
-          <Icon name="ChevronRight" size={11} />
+          <Icon name="ChevronRight" size={10} />
         </button>
       </div>
       {/* Дни недели */}
       <div className="grid grid-cols-7">
         {WEEKDAYS_SHORT.map(d => (
-          <div key={d} className="text-center text-[9px] font-medium text-muted-foreground leading-4">{d}</div>
+          <div key={d} className="text-center text-[8px] font-medium text-muted-foreground leading-[14px]">{d}</div>
         ))}
       </div>
       {/* Числа */}
       <div className="grid grid-cols-7">
         {cells.map((cell, i) => {
-          if (!cell) return <div key={i} className="h-5" />;
+          if (!cell) return <div key={i} className="h-[18px]" />;
           const isToday    = isSameDay(cell, today);
           const isSelected = isSameDay(cell, current);
           const isWeekend  = cell.getDay() === 0 || cell.getDay() === 6;
           return (
             <button key={i} onClick={() => onChange(cell)}
-              className="h-5 w-full flex items-center justify-center text-[10px] font-medium rounded transition-colors"
+              className="h-[18px] w-full flex items-center justify-center text-[9px] font-medium rounded transition-colors"
               style={
                 isSelected ? { background: "hsl(199,85%,38%)", color: "white" }
-                : isToday   ? { color: "hsl(199,85%,38%)", outline: "1px solid hsl(199,85%,38%)", borderRadius: 4 }
+                : isToday   ? { color: "hsl(199,85%,38%)", outline: "1px solid hsl(199,85%,38%)", borderRadius: 3 }
                 : isWeekend ? { color: "#ef4444" }
                 : { color: "hsl(var(--foreground))" }
               }
@@ -176,7 +176,7 @@ function MiniCalendar({ current, onChange }: { current: Date; onChange: (d: Date
       {/* Сегодня */}
       <button
         onClick={() => { onChange(today); setMonth(new Date(today.getFullYear(), today.getMonth(), 1)); }}
-        className="mt-1 w-full text-center text-[9px] font-bold uppercase tracking-wider py-0.5 rounded hover:bg-muted transition-colors"
+        className="mt-0.5 w-full text-center text-[8px] font-bold uppercase tracking-wider py-0.5 rounded hover:bg-muted transition-colors"
         style={{ color: "hsl(199,85%,38%)" }}
       >
         СЕГОДНЯ
@@ -195,13 +195,15 @@ export default function Schedule() {
   const [currentDate, setCurrentDate]   = useState(new Date(2026, 4, 21));
   const [patientSearch, setPatientSearch] = useState("");
   const [tooltip, setTooltip]     = useState<TooltipState | null>(null);
-  const gridRef  = useRef<HTMLDivElement>(null);
-  const wrapRef  = useRef<HTMLDivElement>(null);
+  const gridRef   = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null); // шапка врачей — синхронный скролл
+  const wrapRef   = useRef<HTMLDivElement>(null);
 
   const DAY_START   = 8 * 60;   // 08:00
   const DAY_END     = 21 * 60;  // 21:00
   const totalSlots  = (DAY_END - DAY_START) / step;
   const slotHeight  = 28;       // px на один слот
+  const COL_WIDTH   = 110;      // px ширина колонки врача
 
   const specializations = ["all", ...Array.from(new Set(DOCTORS.map(d => d.specialization)))];
 
@@ -234,6 +236,13 @@ export default function Schedule() {
   useEffect(() => {
     if (gridRef.current) gridRef.current.scrollTop = 0;
   }, []);
+
+  // Синхронизация горизонтального скролла шапки с телом сетки
+  const onGridScroll = () => {
+    if (gridRef.current && headerRef.current) {
+      headerRef.current.scrollLeft = gridRef.current.scrollLeft;
+    }
+  };
 
   const currentTimeMin = 10 * 60 + 30;
   const currentTimePx  = ((currentTimeMin - DAY_START) / step) * slotHeight;
@@ -394,120 +403,66 @@ export default function Schedule() {
         </div>
       </div>
 
-      {/* ═══ Правая: заголовок + сетка ═══ */}
+      {/* ═══ Правая: шапка + сетка ═══ */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        {/* Заголовок: навигация */}
-        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/10 shrink-0">
-          <button onClick={() => setCurrentDate(d => addDays(d, -viewDays))}
-            className="p-1 rounded hover:bg-muted border border-border transition-colors">
-            <Icon name="ChevronLeft" size={14} />
-          </button>
-          <button onClick={() => setCurrentDate(new Date(2026, 4, 21))}
-            className="text-xs font-medium px-2 py-1 rounded border border-border hover:bg-muted transition-colors">
-            Сегодня
-          </button>
-          <button onClick={() => setCurrentDate(d => addDays(d, viewDays))}
-            className="p-1 rounded hover:bg-muted border border-border transition-colors">
-            <Icon name="ChevronRight" size={14} />
-          </button>
-
-          {/* Заголовок даты */}
-          <div className="flex items-center gap-1 ml-1">
-            <Icon name="Calendar" size={13} className="text-primary" />
-            <span className="text-xs font-semibold text-foreground">
-              {viewDays === 1
-                ? (() => {
-                    const wd = getDayOfWeek(currentDate);
-                    return `${wd.charAt(0).toUpperCase() + wd.slice(1)}, ${currentDate.getDate()} ${MONTHS_GEN[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
-                  })()
-                : `${currentDate.getDate()}.${(currentDate.getMonth()+1).toString().padStart(2,"0")} — ${addDays(currentDate, viewDays-1).getDate()}.${(addDays(currentDate, viewDays-1).getMonth()+1).toString().padStart(2,"0")}.${addDays(currentDate, viewDays-1).getFullYear()}`
-              }
-            </span>
-          </div>
-
-          {/* Поиск пациента / услуги — правее */}
-          <div className="ml-auto flex items-center gap-1.5 bg-background border border-border rounded px-2.5 py-1">
-            <Icon name="Search" size={12} className="text-muted-foreground" />
-            <input className="text-xs bg-transparent outline-none w-36 placeholder:text-muted-foreground" placeholder="Поиск пациента или услуги" />
-          </div>
-
-          {/* Кнопка печать */}
-          <button className="flex items-center gap-1 px-2.5 py-1 text-xs border border-border rounded hover:bg-muted transition-colors text-muted-foreground">
-            <Icon name="Printer" size={13} />Печать
-          </button>
-        </div>
-
-        {/* Шапка колонок */}
-        <div className="flex shrink-0 border-b border-border" style={{ overflowX: "hidden" }}>
-          {/* Колонка времени */}
-          <div className="shrink-0 border-r border-border bg-muted/10" style={{ width: 52 }} />
-
-          {/* Группировка по датам: если viewDays > 1, показываем строку с датой */}
-          <div className="flex-1 flex overflow-hidden">
-            {viewDays > 1 ? (
-              // Многодневный: сначала строка дат сверху, потом строка врачей
-              <div className="flex-1 flex flex-col">
-                {/* Строка дат */}
-                <div className="flex border-b border-border" style={{ background: "hsl(var(--muted)/0.3)" }}>
-                  {dateCols.map((date, di) => (
+        {/* Шапка: фиксированная колонка времени + скроллируемые врачи */}
+        <div className="flex shrink-0 border-b border-border" style={{ background: "hsl(var(--muted)/0.15)" }}>
+          {/* Фиксированная колонка времени */}
+          <div className="shrink-0 border-r border-border" style={{ width: 44 }} />
+          {/* Скроллируемая область с датами и врачами — overflow hidden, скролл синхронный */}
+          <div ref={headerRef} className="flex-1 overflow-hidden">
+            <div className="flex" style={{ width: `${columns.length * COL_WIDTH}px` }}>
+              {columns.map(col => {
+                const dateStr = viewDays <= 3
+                  ? (() => {
+                      const wd = getDayOfWeek(col.date);
+                      return `${wd.charAt(0).toUpperCase() + wd.slice(1)}, ${col.date.getDate()} ${MONTHS_GEN[col.date.getMonth()]}`;
+                    })()
+                  : `${col.date.getDate()}.${(col.date.getMonth()+1).toString().padStart(2,"0")}`;
+                const isToday = isSameDay(col.date, new Date(2026, 4, 21));
+                return (
+                  <div
+                    key={col.key}
+                    className="border-r last:border-r-0 border-border text-center"
+                    style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
+                  >
+                    {/* Строка даты */}
                     <div
-                      key={di}
-                      className="flex-1 text-center text-xs font-semibold text-foreground py-1 border-r last:border-r-0 border-border"
-                      style={{ minWidth: `${visibleDoctors.length * 100}px` }}
+                      className="text-[10px] font-semibold py-0.5 border-b border-border truncate px-1"
+                      style={{
+                        background: isToday ? "hsl(199,85%,38%,0.08)" : "hsl(var(--muted)/0.3)",
+                        color: isToday ? "hsl(199,85%,38%)" : "hsl(var(--foreground))",
+                      }}
                     >
-                      {colDateLabel(date, viewDays)}
+                      {dateStr}
                     </div>
-                  ))}
-                </div>
-                {/* Строка врачей */}
-                <div className="flex">
-                  {columns.map(col => (
-                    <div key={col.key}
-                      className="flex-1 text-center py-1.5 border-r last:border-r-0 border-border"
-                      style={{ minWidth: 100 }}>
-                      <div className="text-xs font-medium text-foreground truncate px-1">{col.label}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              // Однодневный: строка дат + фио врачей
-              <div className="flex-1 flex flex-col">
-                {/* Строка даты — одна общая */}
-                <div className="border-b border-border text-center text-xs font-bold py-1" style={{ background: "hsl(var(--muted)/0.3)", color: "hsl(var(--foreground))" }}>
-                  {colDateLabel(currentDate, viewDays)}
-                </div>
-                {/* Имена врачей */}
-                <div className="flex">
-                  {columns.map(col => (
-                    <div key={col.key}
-                      className="flex-1 text-center py-1.5 border-r last:border-r-0 border-border"
-                      style={{ minWidth: 100 }}>
+                    {/* Строка врача */}
+                    <div className="py-0.5 px-1">
                       <div
-                        className="text-xs font-semibold truncate px-2"
+                        className="text-[10px] font-semibold truncate leading-tight"
                         style={{ color: col.color || "hsl(var(--foreground))" }}
                       >
                         {col.label}
                       </div>
                       {groupBy === "doctor" && (
-                        <div className="text-[10px] text-muted-foreground truncate px-2">
+                        <div className="text-[9px] text-muted-foreground truncate leading-tight">
                           {DOCTORS.find(d => d.id === col.docIds[0])?.specialization}
                         </div>
                       )}
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
         {/* Сетка со скроллом */}
-        <div ref={gridRef} className="flex-1 overflow-auto scrollbar-thin">
+        <div ref={gridRef} className="flex-1 overflow-auto scrollbar-thin" onScroll={onGridScroll}>
           <div className="flex" style={{ minHeight: `${totalSlots * slotHeight}px` }}>
             {/* Колонка времени */}
-            <div className="shrink-0 border-r border-border relative" style={{ width: 52 }}>
+            <div className="shrink-0 border-r border-border relative" style={{ width: 44 }}>
               {/* Линия текущего времени — маркер слева */}
               <div className="absolute right-0 z-10 flex items-center" style={{ top: `${currentTimePx}px` }}>
                 <div className="w-2 h-2 rounded-full bg-red-500 translate-x-1" />
@@ -532,12 +487,12 @@ export default function Schedule() {
             </div>
 
             {/* Колонки врачей */}
-            <div className="flex flex-1">
+            <div className="flex" style={{ width: `${columns.length * COL_WIDTH}px` }}>
               {columns.map(col => (
                 <div
                   key={col.key}
-                  className="flex-1 border-r last:border-r-0 border-border relative"
-                  style={{ minWidth: 100 }}
+                  className="border-r last:border-r-0 border-border relative shrink-0"
+                  style={{ width: COL_WIDTH }}
                 >
                   {/* Линия текущего времени */}
                   <div
