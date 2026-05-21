@@ -10,6 +10,7 @@ type Section =
   | "documents"
   | "prices"
   | "reports"
+  | "plans"
   | "work-schedule"
   | "print-services"
   | "crm"
@@ -27,6 +28,7 @@ const navItems: { id: Section; label: string; icon: string; group: string }[] = 
   { id: "prices", label: "Прайс-лист", icon: "Tag", group: "docs" },
   { id: "print-services", label: "Перечень услуг", icon: "Printer", group: "docs" },
   { id: "reports", label: "Отчёты", icon: "BarChart3", group: "analytics" },
+  { id: "plans",   label: "Планы",  icon: "Target",    group: "analytics" },
   { id: "crm", label: "CRM", icon: "Handshake", group: "analytics" },
   { id: "work-schedule", label: "График работы", icon: "Clock", group: "staff" },
   { id: "employees", label: "Сотрудники", icon: "UserCheck", group: "staff" },
@@ -267,6 +269,7 @@ export default function Index({ user }: IndexProps) {
             {active === "documents" && <DocumentsSection />}
             {active === "prices" && <PricesSection />}
             {active === "reports" && <ReportsSection />}
+            {active === "plans"   && <PlansSection />}
             {active === "work-schedule" && <WorkScheduleSection />}
             {active === "print-services" && <PrintServicesSection />}
             {active === "crm" && <CRMSection />}
@@ -399,12 +402,22 @@ function SpecTable({ rows }: { rows: { label: string; primary: number; repeat: n
   );
 }
 
+// Демо-данные за прошлые дни (имитация — в реале из БД по дате)
+const DAY_HISTORY: Record<string, typeof TODAY_DATA> = {
+  "2026-05-21": TODAY_DATA,
+  "2026-05-20": { date: "20 мая 2026, вторник", primary: { trauma: 8, neuro: 5, total: 13 }, repeat: { trauma: 5, neuro: 4, total: 9 }, total: 22, revenue: { trauma: 118_400, neuro: 62_500, total: 180_900 }, avgCheck: { trauma: 8_457, neuro: 9_615, total: 8_223 }, leads: { trauma: 5, neuro: 4, total: 9, converted: 6 } },
+  "2026-05-19": { date: "19 мая 2026, понедельник", primary: { trauma: 10, neuro: 3, total: 13 }, repeat: { trauma: 7, neuro: 2, total: 9 }, total: 22, revenue: { trauma: 142_000, neuro: 44_100, total: 186_100 }, avgCheck: { trauma: 8_353, neuro: 9_800, total: 8_459 }, leads: { trauma: 7, neuro: 2, total: 9, converted: 5 } },
+};
+
 function DashboardSection() {
-  const [tab, setTab] = useState<"today" | "month">("today");
+  const [tab, setTab]         = useState<"today" | "month">("today");
+  const [selectedDate, setSelectedDate] = useState("2026-05-21");
+
+  const dayData = DAY_HISTORY[selectedDate] ?? TODAY_DATA;
 
   const todaySpecRows = [
-    { label: "Травматология", primary: TODAY_DATA.primary.trauma, repeat: TODAY_DATA.repeat.trauma, revenue: TODAY_DATA.revenue.trauma, avgCheck: TODAY_DATA.avgCheck.trauma, color: "#1a9cbe" },
-    { label: "Неврология",    primary: TODAY_DATA.primary.neuro,  repeat: TODAY_DATA.repeat.neuro,  revenue: TODAY_DATA.revenue.neuro,  avgCheck: TODAY_DATA.avgCheck.neuro,  color: "#e67e22" },
+    { label: "Травматология", primary: dayData.primary.trauma, repeat: dayData.repeat.trauma, revenue: dayData.revenue.trauma, avgCheck: dayData.avgCheck.trauma, color: "#1a9cbe" },
+    { label: "Неврология",    primary: dayData.primary.neuro,  repeat: dayData.repeat.neuro,  revenue: dayData.revenue.neuro,  avgCheck: dayData.avgCheck.neuro,  color: "#e67e22" },
   ];
 
   const monthSpecRows = [
@@ -419,8 +432,8 @@ function DashboardSection() {
     <div className="space-y-5">
 
       {/* Переключатель */}
-      <div className="flex items-center gap-2">
-        {([["today", "Сегодня · 21 мая"], ["month", "Май 2026"]] as const).map(([id, label]) => (
+      <div className="flex items-center gap-2 flex-wrap">
+        {([["today", "День"], ["month", "Май 2026"]] as const).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)}
             className="px-4 py-2 rounded-lg text-sm font-semibold border transition-colors"
             style={tab === id
@@ -429,27 +442,39 @@ function DashboardSection() {
             {label}
           </button>
         ))}
+        {tab === "today" && (
+          <div className="flex items-center gap-1.5 border border-border rounded-lg px-2 py-1.5 bg-card">
+            <Icon name="CalendarDays" size={14} className="text-muted-foreground" />
+            <input type="date" value={selectedDate} max="2026-05-21"
+              onChange={e => setSelectedDate(e.target.value)}
+              className="text-sm bg-transparent outline-none text-foreground" />
+          </div>
+        )}
         <span className="ml-auto text-xs text-muted-foreground">Данные из МИС · обновлено сейчас</span>
       </div>
 
-      {/* ══ СЕГОДНЯ ══ */}
+      {/* ══ ДЕНЬ ══ */}
       {tab === "today" && (
         <div className="space-y-5">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-sm font-medium text-foreground">{dayData.date}</span>
+          </div>
           {/* KPI-карточки */}
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
-            <KpiCard label="Приёмов сегодня"   value={String(TODAY_DATA.total)}             icon="CalendarCheck"  accent="hsl(199,85%,38%)" />
-            <KpiCard label="Первичных"          value={String(TODAY_DATA.primary.total)}     icon="UserPlus"       accent="hsl(162,60%,40%)" />
-            <KpiCard label="Повторных"          value={String(TODAY_DATA.repeat.total)}      icon="RefreshCw"      accent="hsl(38,92%,50%)" />
-            <KpiCard label="Выручка за день"    value={fmtRub(TODAY_DATA.revenue.total)}     icon="Banknote"       accent="hsl(162,60%,40%)" />
-            <KpiCard label="Ср. чек"            value={fmtRub(TODAY_DATA.avgCheck.total)}    icon="Receipt"        accent="hsl(199,85%,38%)" />
+            <KpiCard label="Всего приёмов"     value={String(dayData.total)}             icon="CalendarCheck"  accent="hsl(199,85%,38%)" />
+            <KpiCard label="Первичных"          value={String(dayData.primary.total)}     icon="UserPlus"       accent="hsl(162,60%,40%)" />
+            <KpiCard label="Повторных"          value={String(dayData.repeat.total)}      icon="RefreshCw"      accent="hsl(38,92%,50%)" />
+            <KpiCard label="Выручка за день"    value={fmtRub(dayData.revenue.total)}     icon="Banknote"       accent="hsl(162,60%,40%)" />
+            <KpiCard label="Ср. чек"            value={fmtRub(dayData.avgCheck.total)}    icon="Receipt"        accent="hsl(199,85%,38%)" />
           </div>
 
-          {/* Лиды сегодня */}
+          {/* Лиды за день */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <KpiCard label="Лидов сегодня"       value={String(TODAY_DATA.leads.total)}     icon="PhoneIncoming"  accent="hsl(271,70%,55%)" />
-            <KpiCard label="Записались"          value={String(TODAY_DATA.leads.converted)} icon="CalendarPlus"   accent="hsl(162,60%,40%)" />
-            <KpiCard label="Конверсия"           value={`${Math.round(TODAY_DATA.leads.converted/TODAY_DATA.leads.total*100)}%`} icon="TrendingUp" accent="hsl(199,85%,38%)"
-              pctVal={Math.round(TODAY_DATA.leads.converted/TODAY_DATA.leads.total*100)} />
+            <KpiCard label="Лидов за день"   value={String(dayData.leads.total)}     icon="PhoneIncoming"  accent="hsl(271,70%,55%)" />
+            <KpiCard label="Записались"      value={String(dayData.leads.converted)} icon="CalendarPlus"   accent="hsl(162,60%,40%)" />
+            <KpiCard label="Конверсия"       value={`${Math.round(dayData.leads.converted/dayData.leads.total*100)}%`} icon="TrendingUp" accent="hsl(199,85%,38%)"
+              pctVal={Math.round(dayData.leads.converted/dayData.leads.total*100)} />
           </div>
 
           {/* Таблица по специализациям */}
@@ -1132,16 +1157,17 @@ function AppointmentsReport() {
 }
 
 function ReportsSection() {
-  const [activeReport, setActiveReport] = useState<"summary" | "appointments" | "revenue">("appointments");
+  const [activeReport, setActiveReport] = useState<"summary" | "appointments" | "revenue" | "analysis">("appointments");
 
   const months = ["Янв", "Фев", "Мар", "Апр", "Май"];
   const revenue = [1420, 1680, 1950, 2100, 2184];
   const max = Math.max(...revenue);
 
   const reportTabs = [
-    { id: "appointments" as const, label: "Отчёт по приёмам",    icon: "ClipboardList" },
-    { id: "summary"      as const, label: "Сводный дашборд",     icon: "LayoutDashboard" },
-    { id: "revenue"      as const, label: "Выручка по месяцам",  icon: "TrendingUp" },
+    { id: "appointments" as const, label: "Отчёт по приёмам",       icon: "ClipboardList" },
+    { id: "analysis"     as const, label: "Анализ загрузки клиники", icon: "TableProperties" },
+    { id: "summary"      as const, label: "Сводный дашборд",         icon: "LayoutDashboard" },
+    { id: "revenue"      as const, label: "Выручка по месяцам",      icon: "TrendingUp" },
   ];
 
   return (
@@ -1166,6 +1192,9 @@ function ReportsSection() {
           <AppointmentsReport />
         </div>
       )}
+
+      {/* Анализ загрузки клиники */}
+      {activeReport === "analysis" && <ClinicAnalysisReport />}
 
       {/* Сводный дашборд */}
       {activeReport === "summary" && (
@@ -1588,6 +1617,390 @@ function RoomsSection() {
 }
 
 /* ─── SETTINGS ─── */
+// ─── PLANS ───────────────────────────────────────────────────────────────────
+
+const MONTHS_PLAN = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+const MONTHS_DAYS = [31,28,31,30,31,30,31,31,30,31,30,31];
+
+const SPECIALIZATIONS = [
+  { key: "trauma", label: "Травматология", color: "#1a9cbe" },
+  { key: "neuro",  label: "Неврология",    color: "#e67e22" },
+  { key: "other",  label: "Доп. приёмы",   color: "#9b59b6" },
+];
+
+// Данные планов по умолчанию (из файла пользователя)
+const DEFAULT_PLANS: Record<string, number[]> = {
+  total:  [4300000,4700000,5700000,5300000,5200000,5300000,5400000,6000000,5200000,6000000,5500000,5700000],
+  trauma: [2500000,2700000,3300000,3000000,3000000,3000000,3100000,3400000,3000000,3400000,3100000,3200000],
+  neuro:  [1500000,1700000,2000000,1900000,1800000,1900000,1900000,2100000,1800000,2100000,2000000,2000000],
+  other:  [300000, 300000, 400000, 400000, 400000, 400000, 400000, 500000, 400000, 500000, 400000, 500000],
+};
+
+function PlansSection() {
+  const [year, setYear]   = useState(2026);
+  const [plans, setPlans] = useState<Record<string, number[]>>(
+    () => {
+      try {
+        const saved = localStorage.getItem("clinic_plans_2026");
+        return saved ? JSON.parse(saved) : DEFAULT_PLANS;
+      } catch { return DEFAULT_PLANS; }
+    }
+  );
+  const [saved, setSaved] = useState(false);
+
+  const updatePlan = (key: string, monthIdx: number, val: string) => {
+    const num = parseInt(val.replace(/\D/g, ""), 10) || 0;
+    setPlans(prev => {
+      const updated = { ...prev, [key]: [...prev[key]] };
+      updated[key][monthIdx] = num;
+      // Пересчитываем total
+      updated.total = updated.total.map((_, i) =>
+        (updated.trauma[i] || 0) + (updated.neuro[i] || 0) + (updated.other[i] || 0)
+      );
+      return updated;
+    });
+    setSaved(false);
+  };
+
+  const handleSave = () => {
+    localStorage.setItem("clinic_plans_2026", JSON.stringify(plans));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleReset = () => { setPlans(DEFAULT_PLANS); setSaved(false); };
+
+  return (
+    <div className="space-y-5">
+      {/* Шапка */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-foreground">Планы на {year} год</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Введите планы по выручке — общий и по специализациям. Средний чек и кол-во приёмов рассчитываются автоматически.</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={handleReset}
+            className="px-3 py-2 rounded-lg text-xs font-medium border border-border hover:bg-muted transition-colors text-muted-foreground">
+            Сбросить
+          </button>
+          <button onClick={handleSave}
+            className="px-4 py-2 rounded-lg text-xs font-semibold text-white transition-colors flex items-center gap-1.5"
+            style={{ background: saved ? "hsl(162,60%,40%)" : "hsl(199,85%,38%)" }}>
+            <Icon name={saved ? "Check" : "Save"} size={13} />
+            {saved ? "Сохранено!" : "Сохранить планы"}
+          </button>
+        </div>
+      </div>
+
+      {/* Общий план — таблица по месяцам */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+        <div className="px-5 py-3 border-b border-border bg-muted/20 flex items-center gap-2">
+          <Icon name="Target" size={15} className="text-primary" />
+          <h3 className="font-semibold text-sm text-foreground">Общий план по выручке</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-36 sticky left-0 bg-card">Показатель</th>
+                {MONTHS_PLAN.map((m, i) => (
+                  <th key={i} className="text-center px-2 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[90px]">
+                    {m.slice(0,3)}<span className="text-[9px] block font-normal opacity-60">{MONTHS_DAYS[i]} дн</span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {/* Общий план (авто) */}
+              <tr className="bg-muted/5">
+                <td className="px-4 py-2.5 font-semibold text-foreground sticky left-0 bg-muted/5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-primary" />
+                    Итого план
+                  </div>
+                </td>
+                {plans.total.map((v, i) => (
+                  <td key={i} className="px-2 py-2.5 text-center">
+                    <span className="text-xs font-bold text-primary">{fmtRub(v)}</span>
+                  </td>
+                ))}
+              </tr>
+              {/* По специализациям */}
+              {SPECIALIZATIONS.map(spec => (
+                <tr key={spec.key} className="hover:bg-muted/10 transition-colors">
+                  <td className="px-4 py-2.5 sticky left-0 bg-card">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full shrink-0" style={{ background: spec.color }} />
+                      <span className="text-sm text-foreground font-medium">{spec.label}</span>
+                    </div>
+                  </td>
+                  {plans[spec.key].map((v, i) => (
+                    <td key={i} className="px-2 py-1.5 text-center">
+                      <input
+                        type="text"
+                        value={fmtNum(v)}
+                        onChange={e => updatePlan(spec.key, i, e.target.value)}
+                        className="w-full text-xs text-center border border-border rounded px-1 py-1 bg-background outline-none focus:border-primary text-foreground"
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              {/* Должно быть к концу месяца (авто) */}
+              <tr className="bg-amber-50/50 dark:bg-amber-900/10">
+                <td className="px-4 py-2.5 font-medium text-amber-700 dark:text-amber-400 text-xs sticky left-0 bg-amber-50/50 dark:bg-amber-900/10">
+                  <div className="flex items-center gap-2">
+                    <Icon name="AlertCircle" size={12} />
+                    В день (план/дней)
+                  </div>
+                </td>
+                {plans.total.map((v, i) => (
+                  <td key={i} className="px-2 py-2.5 text-center">
+                    <span className="text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                      {fmtRub(Math.round(v / MONTHS_DAYS[i]))}
+                    </span>
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Лиды — планы по специализациям */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+        <div className="px-5 py-3 border-b border-border bg-muted/20 flex items-center gap-2">
+          <Icon name="PhoneIncoming" size={15} className="text-primary" />
+          <h3 className="font-semibold text-sm text-foreground">План по первичным приёмам (лидам)</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase sticky left-0 bg-card w-36">Специализация</th>
+                {MONTHS_PLAN.map((m, i) => (
+                  <th key={i} className="text-center px-2 py-2.5 text-xs font-semibold text-muted-foreground uppercase min-w-[70px]">
+                    {m.slice(0,3)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {[
+                { key: "leads_trauma", label: "Травматология", color: "#1a9cbe", defaults: [220,230,250,240,220,220,230,250,220,240,220,230] },
+                { key: "leads_neuro",  label: "Неврология",    color: "#e67e22", defaults: [180,190,200,190,180,185,190,200,185,195,180,185] },
+                { key: "leads_other",  label: "Доп. приёмы",   color: "#9b59b6", defaults: [15,15,15,15,15,15,15,15,15,15,15,15] },
+              ].map(row => {
+                const vals = plans[row.key] ?? row.defaults;
+                return (
+                  <tr key={row.key} className="hover:bg-muted/10 transition-colors">
+                    <td className="px-4 py-2.5 sticky left-0 bg-card">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full" style={{ background: row.color }} />
+                        <span className="text-sm text-foreground font-medium">{row.label}</span>
+                      </div>
+                    </td>
+                    {(vals as number[]).map((v, i) => (
+                      <td key={i} className="px-2 py-1.5 text-center">
+                        <input type="text" value={v}
+                          onChange={e => updatePlan(row.key, i, e.target.value)}
+                          className="w-full text-xs text-center border border-border rounded px-1 py-1 bg-background outline-none focus:border-primary text-foreground" />
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+              {/* Итого лидов */}
+              <tr className="bg-muted/10 font-semibold">
+                <td className="px-4 py-2.5 text-foreground text-sm sticky left-0 bg-muted/10">Итого лидов</td>
+                {MONTHS_PLAN.map((_, i) => {
+                  const t = (plans["leads_trauma"]?.[i] ?? 220) + (plans["leads_neuro"]?.[i] ?? 180) + (plans["leads_other"]?.[i] ?? 15);
+                  return <td key={i} className="px-2 py-2.5 text-center text-sm font-bold text-foreground">{t}</td>;
+                })}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ANALYSIS REPORT ─────────────────────────────────────────────────────────
+
+// Данные из файла пользователя за 2025 год
+const ANALYSIS_DATA = {
+  plans:    [4300000,4700000,5700000,5300000,5200000,5300000,5400000,6000000,5200000,6000000,5500000,5700000],
+  fact:     [364550, 883337,1027072,1055553, 586897, 640684, 910520, 544834, 841703, 662680, 701021, 0],
+  primary:  [30,64,88,65,46,48,71,53,55,46,60,0],
+  repeat:   [16,56,65,57,40,31,57,27,39,41,33,0],
+  avgCheck: [12152,13802,11671,16239,12759,13348,12824,10280,15304,14406,11684,0],
+  trauma: {
+    revenue:  [299500,504068,694050,694501,311887,411343,494862,237850,527010,276272,267721,0],
+    primary:  [25,28,40,24,24,23,48,29,32,19,27,0],
+    repeat:   [13,27,40,37,21,25,26,8,22,13,13,0],
+    avgCheck: [11980,18002,17351,28938,12995,17884,10310,8202,16469,14541,9916,0],
+    doctors: [
+      { name: "Аскаров",      revenue: [162250,312068,448300,430801,0,242425,342775,0,246548,276272,97150,0] },
+      { name: "Дуйшеналиев",  revenue: [137250,192000,245750,263700,311887,168918,152087,237850,280462,0,170571,0] },
+    ],
+  },
+  neuro: {
+    revenue:  [19700,228205,228750,271855,193050,110000,286300,228644,207340,299640,289430,0],
+    primary:  [5,32,38,32,22,21,23,24,23,27,30,0],
+    repeat:   [3,22,23,18,19,4,31,19,17,28,20,0],
+    avgCheck: [3940,7131,6020,8495,8775,5238,12448,9527,9015,11098,9648,0],
+    doctors: [
+      { name: "Ракин",        revenue: [19700,123100,136850,229550,189550,0,210050,215844,120750,110605,147600,0] },
+      { name: "Ольшанникова", revenue: [0,105105,91900,42305,0,32600,56450,0,28500,0,0,0] },
+      { name: "Кантарбаев",   revenue: [0,0,0,0,3500,77400,19800,12800,7300,27100,18500,0] },
+      { name: "Умарова",      revenue: [0,0,0,0,0,0,0,0,50790,161935,123330,0] },
+    ],
+  },
+  leads: {
+    trauma:      [45,53,84,62,45,47,71,42,63,36,36,0],
+    neuro:       [31,56,62,55,43,49,43,51,54,45,36,0],
+    convTrauma:  [56,53,48,39,55,51,68,73,54,58,77,0],
+    convNeuro:   [16,57,61,58,51,43,53,47,43,60,83,0],
+    total:       [79,112,157,127,91,105,120,98,122,85,75,0],
+    convTotal:   [38,57,56,51,51,46,59,54,45,54,80,0],
+  },
+};
+
+function ClinicAnalysisReport() {
+  const [expandTrauma, setExpandTrauma] = useState(false);
+  const [expandNeuro,  setExpandNeuro]  = useState(false);
+
+  const Cell = ({ v, format = "rub", highlight }: { v: number; format?: "rub"|"num"|"pct"; highlight?: "green"|"red"|"amber"|"blue" }) => {
+    const text = format === "rub" ? (v ? fmtRub(v) : "—")
+               : format === "pct" ? (v ? `${v}%` : "—")
+               : (v || "—").toString();
+    const bg = highlight === "green" ? "hsl(162,60%,40%,0.15)" :
+               highlight === "red"   ? "hsl(0,85%,60%,0.15)" :
+               highlight === "amber" ? "hsl(38,92%,50%,0.15)" :
+               highlight === "blue"  ? "hsl(199,85%,38%,0.15)" : "";
+    return (
+      <td className="px-2 py-2 text-center text-xs whitespace-nowrap" style={{ background: bg }}>
+        <span className={`font-medium ${highlight === "green" ? "text-green-700 dark:text-green-400" : highlight === "red" ? "text-red-600" : highlight === "amber" ? "text-amber-700" : "text-foreground"}`}>
+          {text}
+        </span>
+      </td>
+    );
+  };
+
+  const HeadRow = () => (
+    <tr className="border-b-2 border-border bg-muted/30 sticky top-0 z-10">
+      <th className="text-left px-3 py-2.5 text-xs font-bold text-muted-foreground uppercase sticky left-0 bg-muted/30 min-w-[160px]">Показатель</th>
+      {MONTHS_PLAN.map((m, i) => (
+        <th key={i} className="text-center px-2 py-2.5 text-xs font-bold text-muted-foreground uppercase min-w-[80px]">{m.slice(0,3)}</th>
+      ))}
+    </tr>
+  );
+
+  const SectionHeader = ({ label, color }: { label: string; color: string }) => (
+    <tr>
+      <td colSpan={13} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider sticky left-0" style={{ background: color + "22", color }}>
+        {label}
+      </td>
+    </tr>
+  );
+
+  const DataRow = ({ label, data, format = "rub", bold, highlight, indent, expandable, expanded, onToggle }: {
+    label: string; data: number[]; format?: "rub"|"num"|"pct"; bold?: boolean; highlight?: string;
+    indent?: number; expandable?: boolean; expanded?: boolean; onToggle?: () => void;
+  }) => (
+    <tr className={`border-b border-border/50 hover:bg-muted/10 transition-colors ${bold ? "font-semibold" : ""}`}>
+      <td className={`px-3 py-2 text-xs sticky left-0 bg-card ${bold ? "font-bold text-foreground" : "text-muted-foreground"}`}
+        style={{ paddingLeft: indent ? indent * 16 + 12 : 12 }}>
+        <div className="flex items-center gap-1.5">
+          {expandable && (
+            <button onClick={onToggle}
+              className="w-4 h-4 rounded border border-border flex items-center justify-center shrink-0 hover:bg-muted"
+              style={expanded ? { background: "hsl(199,85%,38%)", borderColor: "hsl(199,85%,38%)" } : {}}>
+              <Icon name={expanded ? "Minus" : "Plus"} size={8} className={expanded ? "text-white" : "text-muted-foreground"} />
+            </button>
+          )}
+          {label}
+        </div>
+      </td>
+      {data.map((v, i) => {
+        let hl: "green"|"red"|"amber"|"blue"|undefined;
+        if (highlight === "fact") hl = v > ANALYSIS_DATA.plans[i] ? "green" : v > ANALYSIS_DATA.plans[i] * 0.8 ? "amber" : "red";
+        else if (highlight === "pct") hl = v >= 80 ? "green" : v >= 50 ? "amber" : "red";
+        else if (highlight === "blue") hl = "blue";
+        else if (highlight === "conv") hl = v >= 60 ? "green" : v >= 40 ? "amber" : "red";
+        return <Cell key={i} v={v} format={format as "rub"|"num"|"pct"} highlight={hl} />;
+      })}
+    </tr>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-base font-bold text-foreground">Анализ загрузки клиники — 2025 год</h2>
+          <p className="text-xs text-muted-foreground">Сводный отчёт по выручке, приёмам, врачам и лидам</p>
+        </div>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-green-200" /> Выполнено</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-amber-200" /> Частично</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-red-200" /> Не выполнено</span>
+        </div>
+      </div>
+
+      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+        <div className="overflow-auto max-h-[70vh] scrollbar-thin">
+          <table className="w-full text-sm border-collapse">
+            <thead><HeadRow /></thead>
+            <tbody>
+              {/* Общие показатели */}
+              <SectionHeader label="Общие показатели" color="hsl(199,85%,38%)" />
+              <DataRow label="План"               data={ANALYSIS_DATA.plans}    format="rub" bold />
+              <DataRow label="Факт"               data={ANALYSIS_DATA.fact}     format="rub" bold highlight="fact" />
+              <DataRow label="% выполнения"       data={ANALYSIS_DATA.plans.map((p,i) => p ? Math.round(ANALYSIS_DATA.fact[i]/p*100) : 0)} format="pct" highlight="pct" />
+              <DataRow label="Первичный приём"    data={ANALYSIS_DATA.primary}  format="num" />
+              <DataRow label="Повторный приём"    data={ANALYSIS_DATA.repeat}   format="num" />
+              <DataRow label="Приёмов в день"     data={ANALYSIS_DATA.primary.map((v,i) => Math.round((v + ANALYSIS_DATA.repeat[i]) / MONTHS_DAYS[i]))} format="num" />
+              <DataRow label="Средний чек"        data={ANALYSIS_DATA.avgCheck} format="rub" highlight="blue" />
+
+              {/* Травматология */}
+              <SectionHeader label="Травматология" color="#1a9cbe" />
+              <DataRow label="Выручка"            data={ANALYSIS_DATA.trauma.revenue}   format="rub" bold expandable expanded={expandTrauma} onToggle={() => setExpandTrauma(v => !v)} />
+              {expandTrauma && ANALYSIS_DATA.trauma.doctors.map(d => (
+                <DataRow key={d.name} label={d.name} data={d.revenue} format="rub" indent={1} />
+              ))}
+              <DataRow label="Первичный приём"    data={ANALYSIS_DATA.trauma.primary}   format="num" />
+              <DataRow label="Повторный приём"    data={ANALYSIS_DATA.trauma.repeat}    format="num" />
+              <DataRow label="Приёмов в день"     data={ANALYSIS_DATA.trauma.primary.map((v,i) => Math.round((v + ANALYSIS_DATA.trauma.repeat[i]) / MONTHS_DAYS[i]))} format="num" />
+              <DataRow label="Средний чек"        data={ANALYSIS_DATA.trauma.avgCheck}  format="rub" highlight="blue" />
+
+              {/* Неврология */}
+              <SectionHeader label="Неврология" color="#e67e22" />
+              <DataRow label="Выручка"            data={ANALYSIS_DATA.neuro.revenue}    format="rub" bold expandable expanded={expandNeuro} onToggle={() => setExpandNeuro(v => !v)} />
+              {expandNeuro && ANALYSIS_DATA.neuro.doctors.map(d => (
+                <DataRow key={d.name} label={d.name} data={d.revenue} format="rub" indent={1} />
+              ))}
+              <DataRow label="Первичный приём"    data={ANALYSIS_DATA.neuro.primary}    format="num" />
+              <DataRow label="Повторный приём"    data={ANALYSIS_DATA.neuro.repeat}     format="num" />
+              <DataRow label="Приёмов в день"     data={ANALYSIS_DATA.neuro.primary.map((v,i) => Math.round((v + ANALYSIS_DATA.neuro.repeat[i]) / MONTHS_DAYS[i]))} format="num" />
+              <DataRow label="Средний чек"        data={ANALYSIS_DATA.neuro.avgCheck}   format="rub" highlight="blue" />
+
+              {/* Лиды */}
+              <SectionHeader label="Целевые лиды и конверсия" color="hsl(271,70%,55%)" />
+              <DataRow label="Травматолог (лиды)" data={ANALYSIS_DATA.leads.trauma}     format="num" />
+              <DataRow label="Конверсия травм."   data={ANALYSIS_DATA.leads.convTrauma} format="pct" highlight="conv" />
+              <DataRow label="Невролог (лиды)"    data={ANALYSIS_DATA.leads.neuro}      format="num" />
+              <DataRow label="Конверсия невро."   data={ANALYSIS_DATA.leads.convNeuro}  format="pct" highlight="conv" />
+              <DataRow label="Всего лидов"        data={ANALYSIS_DATA.leads.total}      format="num" bold />
+              <DataRow label="Общая конверсия"    data={ANALYSIS_DATA.leads.convTotal}  format="pct" bold highlight="conv" />
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SettingsSection() {
   const items = [
     { icon: "Building2", title: "Реквизиты клиники", desc: "Название, адрес, ИНН, лицензия" },
