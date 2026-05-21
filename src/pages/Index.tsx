@@ -117,7 +117,11 @@ const statusLabel: Record<string, { label: string; cls: string }> = {
   vacation: { label: "Отпуск", cls: "badge-status-pending" },
 };
 
-export default function Index() {
+interface IndexProps {
+  user?: { name: string; role: string } | null;
+}
+
+export default function Index({ user }: IndexProps) {
   const [active, setActive] = useState<Section>("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -210,12 +214,12 @@ export default function Index() {
               className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold text-white"
               style={{ background: "linear-gradient(135deg, hsl(199,85%,45%), hsl(162,60%,40%))" }}
             >
-              АК
+              {user?.name?.slice(0, 2).toUpperCase() || "АД"}
             </div>
             {!sidebarCollapsed && (
               <div className="min-w-0">
-                <div className="text-sidebar-foreground text-xs font-medium truncate">Администратор</div>
-                <div className="text-sidebar-foreground text-xs opacity-50 truncate">Главный врач</div>
+                <div className="text-sidebar-foreground text-xs font-medium truncate">{user?.name || "Администратор"}</div>
+                <div className="text-sidebar-foreground text-xs opacity-50 truncate capitalize">{user?.role || "admin"}</div>
               </div>
             )}
           </div>
