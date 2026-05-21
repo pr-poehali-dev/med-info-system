@@ -204,6 +204,11 @@ export default function Schedule() {
   const [currentDate, setCurrentDate]   = useState(new Date(2026, 4, 21));
   const [patientSearch, setPatientSearch] = useState("");
   const [tooltip, setTooltip]     = useState<TooltipState | null>(null);
+  // Раскрывающиеся блоки в левой панели
+  const [specOpen, setSpecOpen]       = useState(true);
+  const [doctorsOpen, setDoctorsOpen] = useState(true);
+  // Какие врачи отмечены (по умолчанию все)
+  const [checkedDoctors, setCheckedDoctors] = useState<number[]>(DOCTORS.map(d => d.id));
   const gridRef   = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const wrapRef   = useRef<HTMLDivElement>(null);
@@ -222,8 +227,17 @@ export default function Schedule() {
   // Список дат для отображения (1..viewDays)
   const dateCols: Date[] = Array.from({ length: viewDays }, (_, i) => addDays(currentDate, i));
 
-  // Видимые врачи
+  // Видимые врачи — фильтрация по специализации И по чекбоксам
   const visibleDoctors = DOCTORS.filter(d =>
+    (selectedSpec === "all" || d.specialization === selectedSpec) &&
+    checkedDoctors.includes(d.id)
+  );
+
+  const toggleDoctor = (id: number) =>
+    setCheckedDoctors(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  // Все врачи с учётом фильтра по специализации (для отображения в списке)
+  const specDoctors = DOCTORS.filter(d =>
     selectedSpec === "all" || d.specialization === selectedSpec
   );
 
@@ -366,44 +380,98 @@ export default function Schedule() {
           </div>
         </div>
 
-        {/* Специализации */}
+        {/* Специализации — раскрывающийся список */}
         <div className="flex-1 overflow-y-auto scrollbar-thin">
-          <div className="px-2 pt-2 pb-1">
-            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1 px-0.5">Специализации</div>
-          </div>
-          {specializations.map(spec => (
-            <button
-              key={spec}
-              onClick={() => setSelectedSpec(spec)}
-              className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                selectedSpec === spec
-                  ? "border-l-2 border-primary font-medium"
-                  : "text-muted-foreground hover:bg-muted border-l-2 border-transparent"
-              }`}
-              style={selectedSpec === spec ? { color: "hsl(199,85%,38%)", background: "hsl(199,85%,38%,0.06)" } : {}}
-            >
-              {spec === "all" ? "Все" : spec}
-            </button>
-          ))}
+          {/* Заголовок-аккордеон */}
+          <button
+            onClick={() => setSpecOpen(v => !v)}
+            className="w-full flex items-center justify-between px-2 py-1.5 border-b border-border hover:bg-muted/40 transition-colors"
+          >
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Специализации</span>
+            <Icon name={specOpen ? "ChevronUp" : "ChevronDown"} size={11} className="text-muted-foreground" />
+          </button>
 
-          {/* Чекбоксы врачей */}
-          <div className="px-2 pt-2 pb-1 border-t border-border mt-1">
-            {visibleDoctors.map(d => (
-              <div key={d.id} className="flex items-center gap-2 py-1 px-1">
-                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: d.color }} />
-                <span className="text-[11px] text-foreground truncate">{d.shortName}</span>
+          {specOpen && (
+            <div>
+              {/* Все */}
+              <button
+                onClick={() => setSelectedSpec("all")}
+                className="w-full text-left px-3 py-1 text-[11px] transition-colors flex items-center justify-between"
+                style={selectedSpec === "all"
+                  ? { color: "hsl(199,85%,38%)", background: "hsl(199,85%,38%,0.07)", borderLeft: "2px solid hsl(199,85%,38%)" }
+                  : { color: "hsl(var(--muted-foreground))", borderLeft: "2px solid transparent" }}
+              >
+                <span>Все</span>
+                {selectedSpec === "all" && <Icon name="Check" size={10} />}
+              </button>
+              {specializations.slice(1).map(spec => (
+                <button
+                  key={spec}
+                  onClick={() => setSelectedSpec(selectedSpec === spec ? "all" : spec)}
+                  className="w-full text-left px-3 py-1 text-[11px] transition-colors flex items-center justify-between"
+                  style={selectedSpec === spec
+                    ? { color: "hsl(199,85%,38%)", background: "hsl(199,85%,38%,0.07)", borderLeft: "2px solid hsl(199,85%,38%)" }
+                    : { color: "hsl(var(--foreground))", borderLeft: "2px solid transparent" }}
+                >
+                  <span>{spec}</span>
+                  {selectedSpec === spec && <Icon name="Check" size={10} />}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Врачи — раскрывающийся список с чекбоксами */}
+          <button
+            onClick={() => setDoctorsOpen(v => !v)}
+            className="w-full flex items-center justify-between px-2 py-1.5 border-t border-b border-border hover:bg-muted/40 transition-colors mt-1"
+          >
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Врачи</span>
+            <Icon name={doctorsOpen ? "ChevronUp" : "ChevronDown"} size={11} className="text-muted-foreground" />
+          </button>
+
+          {doctorsOpen && (
+            <div>
+              {specDoctors.map(d => {
+                const checked = checkedDoctors.includes(d.id);
+                return (
+                  <button
+                    key={d.id}
+                    onClick={() => toggleDoctor(d.id)}
+                    className="w-full flex items-center gap-2 px-2.5 py-1 hover:bg-muted/40 transition-colors"
+                  >
+                    {/* Чекбокс */}
+                    <div
+                      className="w-3.5 h-3.5 rounded shrink-0 flex items-center justify-center border"
+                      style={{
+                        background: checked ? d.color : "transparent",
+                        borderColor: checked ? d.color : "hsl(var(--border))",
+                      }}
+                    >
+                      {checked && <Icon name="Check" size={9} className="text-white" />}
+                    </div>
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ background: d.color }} />
+                    <span className="text-[11px] text-foreground truncate">{d.shortName}</span>
+                  </button>
+                );
+              })}
+              {/* Выбрать все / Снять */}
+              <div className="flex gap-1 px-2 py-1.5 border-t border-border mt-0.5">
+                <button
+                  onClick={() => setCheckedDoctors(specDoctors.map(d => d.id))}
+                  className="flex-1 text-[9px] font-medium text-primary hover:opacity-70 transition-opacity text-left"
+                >
+                  Все
+                </button>
+                <span className="text-muted-foreground text-[9px]">·</span>
+                <button
+                  onClick={() => setCheckedDoctors([])}
+                  className="flex-1 text-[9px] font-medium text-muted-foreground hover:opacity-70 transition-opacity text-right"
+                >
+                  Снять
+                </button>
               </div>
-            ))}
-          </div>
-
-          <div className="px-2 py-1.5 border-t border-border">
-            <button className="w-full text-left text-[10px] text-primary flex items-center gap-1 hover:opacity-80">
-              <Icon name="CheckSquare" size={11} />Выбрать все
-            </button>
-            <button className="w-full text-left text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5 hover:opacity-80">
-              <Icon name="Square" size={11} />Снять выделение
-            </button>
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Кнопка новая запись */}
@@ -438,14 +506,13 @@ export default function Schedule() {
                     })()
                   : `${date.getDate()}.${(date.getMonth()+1).toString().padStart(2,"0")}`;
                 return (
-                  <div key={dateIdx} style={{ width: dayCols.length * COL_WIDTH }}>
+                  <div key={dateIdx} style={{ width: dayCols.length * COL_WIDTH, borderRight: "2px solid hsl(var(--border))" }}>
                     {/* Одна строка даты над всеми врачами этого дня */}
                     <div
                       className="text-[10px] font-semibold py-0.5 border-b border-border text-center truncate px-1"
                       style={{
                         background: isToday ? "hsl(199,85%,38%,0.1)" : "hsl(var(--muted)/0.4)",
                         color: isToday ? "hsl(199,85%,38%)" : "hsl(var(--foreground))",
-                        borderRight: "1px solid hsl(var(--border))",
                       }}
                     >
                       {dateStr}
@@ -507,19 +574,26 @@ export default function Schedule() {
               })}
             </div>
 
-            {/* Колонки врачей */}
+            {/* Колонки врачей — сгруппированы по дням */}
             <div className="flex" style={{ width: `${columns.length * COL_WIDTH}px` }}>
-              {columns.map(col => {
-                // Все приёмы этой колонки — позиционируем абсолютно в пикселях
-                // Высота 1 минуты = slotHeight / step (px)
+              {columns.map((col, colIdx) => {
                 const pxPerMin = slotHeight / step;
                 const colAppts = APPOINTMENTS.filter(a => col.docIds.includes(a.doctorId));
+                // Последняя колонка дня — правая граница толще
+                const isLastOfDay = colIdx === columns.length - 1 ||
+                  columns[colIdx + 1]?.dateIdx !== col.dateIdx;
 
                 return (
                   <div
                     key={col.key}
-                    className="border-r last:border-r-0 border-border relative shrink-0"
-                    style={{ width: COL_WIDTH, height: totalSlots * slotHeight }}
+                    className="relative shrink-0"
+                    style={{
+                      width: COL_WIDTH,
+                      height: totalSlots * slotHeight,
+                      borderRight: isLastOfDay
+                        ? "2px solid hsl(var(--border))"
+                        : "1px solid hsl(var(--border)/0.4)",
+                    }}
                   >
                     {/* Линия текущего времени */}
                     <div
