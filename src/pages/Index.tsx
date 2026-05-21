@@ -2247,6 +2247,9 @@ function ClinicAnalysisReport() {
                     <DataRow label="Первичный приём" fmt="num" isRevColor
                       getVal={(accum) => accum.specPrimary[spec.key] ?? 0} />
 
+                    <DataRow label="Повторный приём" fmt="num" isRevColor
+                      getVal={(accum) => accum.specRepeat[spec.key] ?? 0} />
+
                     <DataRow label="ПП в день" fmt="num" isRevColor
                       getVal={(accum, _p, _s, day) => day > 0 ? Math.round((accum.specPrimary[spec.key] ?? 0) / day) : 0} />
 
