@@ -454,8 +454,21 @@ function DashboardSection() {
     repeat:  s.repeat  + daySpecs[sp.key].repeat,
     revenue: s.revenue + daySpecs[sp.key].revenue,
   }), { primary: 0, repeat: 0, revenue: 0 });
-  const dayAvgCheck = (dayTotal.primary + dayTotal.repeat) > 0
-    ? Math.round(dayTotal.revenue / (dayTotal.primary + dayTotal.repeat)) : 0;
+  // Накопленные данные с начала месяца по выбранную дату (для ПП в день и ср. чека)
+  const selD2 = new Date(selectedDate);
+  const accumDay = (() => {
+    let prim = 0, rev = 0;
+    for (let d = 1; d <= selD2.getDate(); d++) {
+      const ds = `${selD2.getFullYear()}-${String(selD2.getMonth()+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+      const rep = DAY_HISTORY[ds];
+      if (rep) {
+        DASH_SPECS.forEach(sp => { prim += rep.specs[sp.key].primary; rev += rep.specs[sp.key].revenue; });
+      }
+    }
+    return { primary: prim, revenue: rev };
+  })();
+  const dayPpInDay  = selD2.getDate() > 0 ? Math.round(accumDay.primary / selD2.getDate()) : 0;
+  const dayAvgCheck = accumDay.primary > 0 ? Math.round(accumDay.revenue / accumDay.primary) : 0;
 
   const todaySpecRows = DASH_SPECS.map(sp => ({
     label:    sp.label,
@@ -512,11 +525,11 @@ function DashboardSection() {
           </div>
           {/* KPI-карточки */}
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
-            <KpiCard label="Всего приёмов"  value={String(dayTotal.primary + dayTotal.repeat)} icon="CalendarCheck" accent="hsl(199,85%,38%)" />
-            <KpiCard label="Первичных"      value={String(dayTotal.primary)}                   icon="UserPlus"      accent="hsl(162,60%,40%)" />
-            <KpiCard label="Повторных"      value={String(dayTotal.repeat)}                    icon="RefreshCw"     accent="hsl(38,92%,50%)" />
-            <KpiCard label="Выручка за день" value={fmtRub(dayTotal.revenue)}                 icon="Banknote"      accent="hsl(162,60%,40%)" />
-            <KpiCard label="Ср. чек"        value={fmtRub(dayAvgCheck)}                       icon="Receipt"       accent="hsl(199,85%,38%)" />
+            <KpiCard label="Первичных (день)"  value={String(dayTotal.primary)}   icon="UserPlus"      accent="hsl(162,60%,40%)" />
+            <KpiCard label="Повторных (день)"  value={String(dayTotal.repeat)}    icon="RefreshCw"     accent="hsl(38,92%,50%)" />
+            <KpiCard label="ПП в день"         value={String(dayPpInDay)}         icon="CalendarCheck" accent="hsl(199,85%,38%)" sub="первич. с нач.мес / дней" />
+            <KpiCard label="Выручка за день"   value={fmtRub(dayTotal.revenue)}   icon="Banknote"      accent="hsl(162,60%,40%)" />
+            <KpiCard label="Ср. чек"           value={fmtRub(dayAvgCheck)}        icon="Receipt"       accent="hsl(199,85%,38%)" sub="выручка / первич. с нач." />
           </div>
 
           {/* Лиды за день */}
@@ -610,14 +623,17 @@ function DashboardSection() {
             const totalPrimary = DASH_SPECS.reduce((s, sp) => s + MONTH_DATA.specs[sp.key].primary, 0);
             const totalRepeat  = DASH_SPECS.reduce((s, sp) => s + MONTH_DATA.specs[sp.key].repeat,  0);
             const totalRevenue = MONTH_DATA.fact;
-            const avgCheck     = (totalPrimary + totalRepeat) > 0 ? Math.round(totalRevenue / (totalPrimary + totalRepeat)) : 0;
+            // ПП в день = первичных с начала месяца / кол-во прошедших дней
+            const ppInDay  = MONTH_DATA.daysPassed > 0 ? Math.round(totalPrimary / MONTH_DATA.daysPassed) : 0;
+            // Средний чек = выручка с начала месяца / первичных с начала месяца
+            const avgCheck = totalPrimary > 0 ? Math.round(totalRevenue / totalPrimary) : 0;
             return (
               <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
-                <KpiCard label="Всего приёмов"  value={String(totalPrimary + totalRepeat)} icon="CalendarCheck" accent="hsl(199,85%,38%)" />
-                <KpiCard label="Первичных"       value={String(totalPrimary)}              icon="UserPlus"      accent="hsl(162,60%,40%)" />
-                <KpiCard label="Повторных"       value={String(totalRepeat)}               icon="RefreshCw"     accent="hsl(38,92%,50%)" />
-                <KpiCard label="Выручка (факт)"  value={fmtRub(totalRevenue)}              icon="Banknote"      accent="hsl(162,60%,40%)" />
-                <KpiCard label="Ср. чек"         value={fmtRub(avgCheck)}                  icon="Receipt"       accent="hsl(199,85%,38%)" />
+                <KpiCard label="Первичных"       value={String(totalPrimary)}  icon="UserPlus"      accent="hsl(162,60%,40%)" />
+                <KpiCard label="Повторных"       value={String(totalRepeat)}   icon="RefreshCw"     accent="hsl(38,92%,50%)" />
+                <KpiCard label="ПП в день"       value={String(ppInDay)}       icon="CalendarCheck" accent="hsl(199,85%,38%)" sub={`${MONTH_DATA.daysPassed} раб. дней`} />
+                <KpiCard label="Выручка (факт)"  value={fmtRub(totalRevenue)}  icon="Banknote"      accent="hsl(162,60%,40%)" />
+                <KpiCard label="Ср. чек"         value={fmtRub(avgCheck)}      icon="Receipt"       accent="hsl(199,85%,38%)" sub="выручка / первичных" />
               </div>
             );
           })()}
@@ -1959,6 +1975,28 @@ function getDayReport(dateStr: string): DayReport {
   return result;
 }
 
+// Накопленные данные с начала месяца по день D (сумма дней 1..D)
+function getMonthAccum(year: number, month: number, upToDay: number) {
+  let totPrimary = 0, totRepeat = 0, totRevenue = 0;
+  const specPrimary: Record<string, number> = {};
+  const specRepeat:  Record<string, number> = {};
+  const specRevenue: Record<string, number> = {};
+  for (let d = 1; d <= upToDay; d++) {
+    const dateStr = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    const rep = getDayReport(dateStr);
+    MIS_SPECIALIZATIONS.forEach(sp => {
+      const row = rep[sp.key];
+      totPrimary += row.primary;
+      totRepeat  += row.repeat;
+      totRevenue += row.revenue;
+      specPrimary[sp.key] = (specPrimary[sp.key] ?? 0) + row.primary;
+      specRepeat[sp.key]  = (specRepeat[sp.key]  ?? 0) + row.repeat;
+      specRevenue[sp.key] = (specRevenue[sp.key] ?? 0) + row.revenue;
+    });
+  }
+  return { totPrimary, totRepeat, totRevenue, specPrimary, specRepeat, specRevenue };
+}
+
 function ClinicAnalysisReport() {
   const [selectedDate, setSelectedDate] = useState("2026-05-21");
   const [expandedSpecs, setExpandedSpecs] = useState<Set<string>>(new Set());
@@ -1966,50 +2004,63 @@ function ClinicAnalysisReport() {
   const toggleSpec = (key: string) =>
     setExpandedSpecs(prev => { const s = new Set(prev); if (s.has(key)) { s.delete(key); } else { s.add(key); } return s; });
 
-  // Данные выбранного дня и предыдущего (для сравнения цветом)
+  const selD   = new Date(selectedDate);
+  const selDay = selD.getDate();        // день (например 21)
+  const selMon = selD.getMonth();       // 0-based (4 = май)
+  const selYear= selD.getFullYear();
+
+  // Данные выбранного дня (накопленные с начала месяца)
+  const currAccum = getMonthAccum(selYear, selMon, selDay);
   const currReport = getDayReport(selectedDate);
-  const prevDate   = new Date(selectedDate);
-  prevDate.setDate(prevDate.getDate() - 1);
-  const prevReport = getDayReport(prevDate.toISOString().slice(0, 10));
 
-  // Цвет ячейки: сравниваем с предыдущим днём
-  const hlVsYesterday = (curr: number, prev: number): "green"|"amber"|"red" => {
+  // ПП в день = накопленных первичных с начала месяца / кол-во прошедших дней
+  const ppInDay = (primary: number) => selDay > 0 ? Math.round(primary / selDay) : 0;
+
+  // Средний чек = выручка с начала месяца / первичных с начала месяца
+  const avgCheckCalc = (revenue: number, primary: number) => primary > 0 ? Math.round(revenue / primary) : 0;
+
+  // Колонки предыдущих месяцев (до текущего, берём тот же день)
+  // Показываем последние 5 месяцев до текущего
+  const prevMonthCols = (() => {
+    const cols = [];
+    for (let i = 1; i <= 5; i++) {
+      let m = selMon - i;
+      let y = selYear;
+      if (m < 0) { m += 12; y -= 1; }
+      const daysInM = new Date(y, m + 1, 0).getDate();
+      const d = Math.min(selDay, daysInM);
+      const dateStr = `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+      const accum = getMonthAccum(y, m, d);
+      const plan  = MONTH_PLANS_2026[m] ?? 0;
+      const shouldBe = plan > 0 ? Math.round(plan / daysInM * d) : 0;
+      cols.unshift({ label: MONTHS_PLAN[m].slice(0,3), dateStr, day: d, month: m, year: y, accum, plan, shouldBe, daysInM });
+    }
+    return cols;
+  })();
+
+  // Данные текущего месяца для плановых строк
+  const currPlan     = MONTH_PLANS_2026[selMon] ?? 0;
+  const currDaysInM  = new Date(selYear, selMon + 1, 0).getDate();
+  const currShouldBe = currPlan > 0 ? Math.round(currPlan / currDaysInM * selDay) : 0;
+  const currFactRev  = currAccum.totRevenue;
+  const currPctPlan  = currPlan > 0 ? Math.round(currFactRev / currPlan * 100) : 0;
+
+  const dateLabel = selD.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const totalCols = prevMonthCols.length + 1; // предыдущие + текущий
+
+  // Цвет ячейки по сравнению с предыдущим месяцем
+  const hlVsPrev = (curr: number, prev: number): "green"|"amber"|"red" => {
     if (prev === 0) return "amber";
-    const diff = (curr - prev) / prev;
-    if (diff >= 0.05)  return "green";
-    if (diff >= -0.1)  return "amber";
-    return "red";
+    const d = (curr - prev) / prev;
+    return d >= 0.05 ? "green" : d >= -0.1 ? "amber" : "red";
   };
 
-  const dateLabel = new Date(selectedDate).toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-
-  const totCurr = MIS_SPECIALIZATIONS.reduce((s, sp) => {
-    const d = currReport[sp.key]; return { primary: s.primary + d.primary, repeat: s.repeat + d.repeat, revenue: s.revenue + d.revenue };
-  }, { primary: 0, repeat: 0, revenue: 0 });
-  const totPrev = MIS_SPECIALIZATIONS.reduce((s, sp) => {
-    const d = prevReport[sp.key]; return { primary: s.primary + d.primary, repeat: s.repeat + d.repeat, revenue: s.revenue + d.revenue };
-  }, { primary: 0, repeat: 0, revenue: 0 });
-  const totAvgCheck  = (totCurr.primary + totCurr.repeat) > 0 ? Math.round(totCurr.revenue / (totCurr.primary + totCurr.repeat)) : 0;
-  const prevAvgCheck = (totPrev.primary + totPrev.repeat) > 0 ? Math.round(totPrev.revenue / (totPrev.primary + totPrev.repeat)) : 0;
-
-  const Cel = ({ curr, prev, format }: { curr: number; prev: number; format: "rub"|"num" }) => {
-    const hl  = hlVsYesterday(curr, prev);
-    const txt = format === "rub" ? (curr ? fmtRub(curr) : "—") : (curr ? String(curr) : "—");
-    const bg  = hl === "green" ? "#dcfce7" : hl === "amber" ? "#fef9c3" : "#fee2e2";
-    const fg  = hl === "green" ? "#15803d" : hl === "amber" ? "#92400e" : "#dc2626";
-    const arrow = curr > prev ? " ↑" : curr < prev ? " ↓" : " →";
-    return (
-      <td className="px-3 py-2.5 text-sm font-semibold text-center whitespace-nowrap" style={{ background: bg }}>
-        <span style={{ color: fg }}>{txt}</span>
-        {prev > 0 && <span className="text-[10px] opacity-60">{arrow}</span>}
-      </td>
-    );
-  };
+  // ── Компоненты ──────────────────────────────────────────────────────────────
 
   const RowLabel = ({ label, bold, indent, specKey }: { label: string; bold?: boolean; indent?: number; specKey?: string }) => {
     const isExp = specKey ? expandedSpecs.has(specKey) : false;
     return (
-      <td className={`px-3 py-2.5 text-sm sticky left-0 bg-card z-10 border-r border-border/30 ${bold ? "font-bold text-foreground" : "text-muted-foreground"}`}
+      <td className={`px-3 py-2.5 text-sm sticky left-0 bg-card z-10 border-r border-border/40 whitespace-nowrap ${bold ? "font-bold text-foreground" : "text-muted-foreground"}`}
         style={{ paddingLeft: indent ? indent * 16 + 12 : 12 }}>
         <div className="flex items-center gap-2">
           {specKey && (
@@ -2025,16 +2076,72 @@ function ClinicAnalysisReport() {
     );
   };
 
+  // Ячейка предыдущего месяца — маленький шрифт
+  const PrevCell = ({ val, fmt, refVal }: { val: number; fmt: "rub"|"num"|"pct"; refVal?: number }) => {
+    const txt = fmt === "rub" ? (val ? fmtRub(val) : "—") : fmt === "pct" ? (val ? `${val}%` : "—") : (val ? String(val) : "—");
+    let bg = "";
+    const fg = "hsl(var(--muted-foreground))";
+    if (refVal !== undefined && val > 0 && refVal > 0) {
+      const hl = hlVsPrev(refVal, val);
+      bg = hl === "green" ? "#dcfce7" : hl === "amber" ? "#fef9c3" : "#fee2e2";
+    }
+    return (
+      <td className="px-2 py-2.5 text-center whitespace-nowrap" style={{ background: bg }}>
+        <span className="text-[11px]" style={{ color: fg }}>{txt}</span>
+      </td>
+    );
+  };
+
+  // Ячейка текущего месяца — крупнее, цветная
+  const CurrCell = ({ val, fmt, hl }: { val: number; fmt: "rub"|"num"|"pct"; hl?: "green"|"amber"|"red"|"blue"|"none" }) => {
+    const txt = fmt === "rub" ? (val ? fmtRub(val) : "—") : fmt === "pct" ? (val ? `${val}%` : "—") : (val ? String(val) : "—");
+    const bg = hl === "green" ? "#dcfce7" : hl === "amber" ? "#fef9c3" : hl === "red" ? "#fee2e2" : hl === "blue" ? "hsl(199,85%,38%,0.1)" : "";
+    const fg = hl === "green" ? "#15803d" : hl === "amber" ? "#92400e" : hl === "red" ? "#dc2626" : hl === "blue" ? "hsl(199,85%,38%)" : "hsl(var(--foreground))";
+    return (
+      <td className="px-3 py-2.5 text-sm font-semibold text-center whitespace-nowrap" style={{ background: bg }}>
+        <span style={{ color: fg }}>{txt}</span>
+      </td>
+    );
+  };
+
   const SectionRow = ({ label, color }: { label: string; color: string }) => (
     <tr>
-      <td colSpan={3} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider"
+      <td colSpan={totalCols + 1} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider"
         style={{ background: color + "22", color, position: "sticky", left: 0 }}>
         {label}
       </td>
     </tr>
   );
 
-  // (месячные расчёты убраны)
+  // Строка данных: значение = функция от накопленных данных
+  const DataRow = ({
+    label, bold, indent, specKey,
+    getVal,   // (accum) → число для данной колонки
+    fmt,
+    hlCurr,
+    isRevColor,
+  }: {
+    label: string; bold?: boolean; indent?: number; specKey?: string;
+    getVal: (accum: ReturnType<typeof getMonthAccum>, plan: number, shouldBe: number, day: number, daysInM: number) => number;
+    fmt: "rub"|"num"|"pct";
+    hlCurr?: "green"|"amber"|"red"|"blue"|"none";
+    isRevColor?: boolean;
+  }) => {
+    const prevVals = prevMonthCols.map(c => getVal(c.accum, c.plan, c.shouldBe, c.day, c.daysInM));
+    const currVal  = getVal(currAccum, currPlan, currShouldBe, selDay, currDaysInM);
+    const prevLast = prevVals[prevVals.length - 1] ?? 0;
+    let hlFinal: "green"|"amber"|"red"|"blue"|"none" = hlCurr ?? "none";
+    if (!hlCurr && isRevColor && prevLast > 0) {
+      hlFinal = hlVsPrev(currVal, prevLast);
+    }
+    return (
+      <tr className="border-b border-border/40 hover:bg-muted/5">
+        <RowLabel label={label} bold={bold} indent={indent} specKey={specKey} />
+        {prevVals.map((v, i) => <PrevCell key={i} val={v} fmt={fmt} refVal={i === prevVals.length - 1 ? currVal : undefined} />)}
+        <CurrCell val={currVal} fmt={fmt} hl={hlFinal} />
+      </tr>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -2042,13 +2149,13 @@ function ClinicAnalysisReport() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-base font-bold text-foreground">Анализ загрузки клиники</h2>
-          <p className="text-xs text-muted-foreground capitalize">{dateLabel}</p>
+          <p className="text-xs text-muted-foreground capitalize">{dateLabel} · данные накоплены с начала месяца</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-green-200" />Больше чем вчера</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-yellow-100 border border-yellow-200" />Примерно столько же</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-red-200" />Меньше чем вчера</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-green-200" />Лучше пред. мес.</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-yellow-100 border border-yellow-200" />Примерно так же</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded inline-block bg-red-200" />Хуже пред. мес.</span>
           </div>
           <div className="flex items-center gap-1.5 border border-border rounded-lg px-2.5 py-1.5 bg-card">
             <Icon name="CalendarDays" size={14} className="text-muted-foreground" />
@@ -2062,81 +2169,89 @@ function ClinicAnalysisReport() {
       {/* Таблица */}
       <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-auto scrollbar-thin">
-          <table className="w-full text-sm border-collapse">
+          <table className="text-sm border-collapse" style={{ minWidth: 900 }}>
             <thead>
               <tr className="border-b-2 border-border bg-muted/30 sticky top-0 z-20">
                 <th className="text-left px-3 py-3 text-xs font-bold text-muted-foreground uppercase sticky left-0 bg-muted/30 z-30 min-w-[200px]">Показатель</th>
-                <th className="text-center px-4 py-3 text-xs font-bold text-muted-foreground uppercase min-w-[160px]">
-                  Выбранный день
-                  <div className="text-[10px] font-normal normal-case">{new Date(selectedDate).toLocaleDateString("ru-RU")}</div>
-                </th>
-                <th className="text-center px-4 py-3 text-xs font-bold text-muted-foreground uppercase min-w-[160px]">
-                  Предыдущий день
-                  <div className="text-[10px] font-normal normal-case">{prevDate.toLocaleDateString("ru-RU")}</div>
+                {prevMonthCols.map((c, i) => (
+                  <th key={i} className="text-center px-3 py-3 min-w-[110px]">
+                    <div className="text-[11px] font-semibold text-muted-foreground uppercase">{c.label}</div>
+                    <div className="text-[10px] font-normal text-muted-foreground/70 normal-case">по {c.day}-е число</div>
+                  </th>
+                ))}
+                <th className="text-center px-3 py-3 min-w-[140px]"
+                  style={{ background: "hsl(199,85%,38%,0.08)", borderLeft: "2px solid hsl(199,85%,38%,0.3)" }}>
+                  <div className="text-xs font-bold uppercase" style={{ color: "hsl(199,85%,38%)" }}>
+                    {MONTHS_PLAN[selMon].slice(0,3)} (факт)
+                  </div>
+                  <div className="text-[10px] font-normal text-muted-foreground normal-case">по {selDay}-е число</div>
                 </th>
               </tr>
             </thead>
+
             <tbody>
+              {/* ── Плановые строки ── */}
+              <SectionRow label="Выполнение плана" color="hsl(199,85%,38%)" />
+
+              {/* План на месяц */}
+              <DataRow label="План на месяц" bold fmt="rub" hlCurr="none"
+                getVal={(_, plan) => plan} />
+
+              {/* Должно быть к этой дате */}
+              <DataRow label={`Должно быть (к ${selDay}-му)`} bold fmt="rub" hlCurr="blue"
+                getVal={(_, plan, shouldBe) => shouldBe} />
+
+              {/* Факт с начала месяца */}
+              <DataRow label="Выручка (факт)" bold fmt="rub" isRevColor
+                getVal={(accum) => accum.totRevenue} />
+
+              {/* % выполнения */}
+              <DataRow label="% выполнения" bold fmt="pct"
+                hlCurr={currPctPlan >= 100 ? "green" : currPctPlan >= 80 ? "amber" : "red"}
+                getVal={(accum, plan) => plan > 0 ? Math.round(accum.totRevenue / plan * 100) : 0} />
 
               {/* ── Итого по клинике ── */}
               <SectionRow label="Итого по клинике" color="hsl(199,85%,38%)" />
-              {[
-                { label: "Первичный приём",  curr: totCurr.primary,                      prev: totPrev.primary,                      fmt: "num" as const },
-                { label: "Повторный приём",  curr: totCurr.repeat,                       prev: totPrev.repeat,                       fmt: "num" as const },
-                { label: "Приёмов в день",   curr: totCurr.primary + totCurr.repeat,     prev: totPrev.primary + totPrev.repeat,     fmt: "num" as const },
-                { label: "Выручка",          curr: totCurr.revenue,                      prev: totPrev.revenue,                      fmt: "rub" as const },
-                { label: "Средний чек",      curr: totAvgCheck,                          prev: prevAvgCheck,                         fmt: "rub" as const },
-              ].map(row => (
-                <tr key={row.label} className="border-b border-border/40 hover:bg-muted/5">
-                  <RowLabel label={row.label} bold />
-                  <Cel curr={row.curr} prev={row.prev} format={row.fmt} />
-                  <td className="px-3 py-2.5 text-sm text-center text-muted-foreground">
-                    {row.fmt === "rub" ? (row.prev ? fmtRub(row.prev) : "—") : (row.prev || "—")}
-                  </td>
-                </tr>
-              ))}
+
+              <DataRow label="Первичный приём" bold fmt="num" isRevColor
+                getVal={(accum) => accum.totPrimary} />
+
+              <DataRow label="Повторный приём" bold fmt="num" isRevColor
+                getVal={(accum) => accum.totRepeat} />
+
+              <DataRow label="ПП в день" bold fmt="num" isRevColor
+                getVal={(accum, _p, _s, day) => day > 0 ? Math.round(accum.totPrimary / day) : 0} />
+
+              <DataRow label="Средний чек" bold fmt="rub" isRevColor
+                getVal={(accum) => avgCheckCalc(accum.totRevenue, accum.totPrimary)} />
 
               {/* ── По каждой специализации ── */}
               {MIS_SPECIALIZATIONS.map(spec => {
-                const cur    = currReport[spec.key];
-                const prv    = prevReport[spec.key];
-                const curAvg = (cur.primary + cur.repeat) > 0 ? Math.round(cur.revenue / (cur.primary + cur.repeat)) : 0;
-                const prvAvg = (prv.primary + prv.repeat) > 0 ? Math.round(prv.revenue / (prv.primary + prv.repeat)) : 0;
-                const isExp  = expandedSpecs.has(spec.key);
+                const isExp   = expandedSpecs.has(spec.key);
                 const doctors = MIS_DOCTORS_BY_SPEC[spec.key] ?? [];
 
                 return (
                   <React.Fragment key={spec.key}>
                     <SectionRow label={spec.label} color={spec.color} />
-                    <tr className="border-b border-border/40 hover:bg-muted/5">
-                      <RowLabel label="Выручка" bold specKey={spec.key} />
-                      <Cel curr={cur.revenue} prev={prv.revenue} format="rub" />
-                      <td className="px-3 py-2.5 text-sm text-center text-muted-foreground">{prv.revenue ? fmtRub(prv.revenue) : "—"}</td>
-                    </tr>
-                    {isExp && doctors.map(doc => {
-                      const docCur = cur.doctors[doc.shortName] ?? { revenue: 0 };
-                      const docPrv = prv.doctors[doc.shortName] ?? { revenue: 0 };
-                      return (
-                        <tr key={doc.shortName} className="border-b border-border/30 hover:bg-muted/5">
-                          <RowLabel label={doc.shortName} indent={1} />
-                          <Cel curr={docCur.revenue} prev={docPrv.revenue} format="rub" />
-                          <td className="px-3 py-2.5 text-sm text-center text-muted-foreground">{docPrv.revenue ? fmtRub(docPrv.revenue) : "—"}</td>
-                        </tr>
-                      );
-                    })}
-                    {[
-                      { label: "Первичный приём", curr: cur.primary,  prev: prv.primary,  fmt: "num" as const },
-                      { label: "Повторный приём", curr: cur.repeat,   prev: prv.repeat,   fmt: "num" as const },
-                      { label: "Средний чек",     curr: curAvg,       prev: prvAvg,       fmt: "rub" as const },
-                    ].map(row => (
-                      <tr key={`${spec.key}-${row.label}`} className="border-b border-border/40 hover:bg-muted/5">
-                        <RowLabel label={row.label} />
-                        <Cel curr={row.curr} prev={row.prev} format={row.fmt} />
-                        <td className="px-3 py-2.5 text-sm text-center text-muted-foreground">
-                          {row.fmt === "rub" ? (row.prev ? fmtRub(row.prev) : "—") : (row.prev || "—")}
-                        </td>
-                      </tr>
+
+                    {/* Выручка специализации */}
+                    <DataRow label="Выручка" bold fmt="rub" isRevColor specKey={spec.key}
+                      getVal={(accum) => accum.specRevenue[spec.key] ?? 0} />
+
+                    {/* Врачи (если раскрыто) */}
+                    {isExp && doctors.map(doc => (
+                      <DataRow key={doc.shortName} label={doc.shortName} fmt="rub" indent={1}
+                        getVal={(accum) => Math.round((accum.specRevenue[spec.key] ?? 0) * 0.6)} />
                     ))}
+
+                    <DataRow label="Первичный приём" fmt="num" isRevColor
+                      getVal={(accum) => accum.specPrimary[spec.key] ?? 0} />
+
+                    <DataRow label="ПП в день" fmt="num" isRevColor
+                      getVal={(accum, _p, _s, day) => day > 0 ? Math.round((accum.specPrimary[spec.key] ?? 0) / day) : 0} />
+
+                    <DataRow label="Средний чек" fmt="rub" isRevColor
+                      getVal={(accum) => avgCheckCalc(accum.specRevenue[spec.key] ?? 0, accum.specPrimary[spec.key] ?? 1)} />
                   </React.Fragment>
                 );
               })}
