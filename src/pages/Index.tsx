@@ -1731,10 +1731,11 @@ const LOGO_PURPOSES = ["Основной логотип", "Логотип для
 const LEGAL_FORMS   = ["ООО", "ОАО", "ЗАО", "ПАО", "АО", "ИП", "НКО", "ГБУЗ", "ФГБУ"];
 
 // ─── Модальное окно филиала ───────────────────────────────────────────────────
-function BranchModal({ branch, onClose, onSave }: {
+function BranchModal({ branch, onClose, onSave, inline = false }: {
   branch: BranchData;
   onClose: () => void;
   onSave: (b: BranchData) => void;
+  inline?: boolean;
 }) {
   const [form, setForm] = useState<BranchData>({ ...branch, id: branch.id || String(Date.now()) });
   const [tab, setTab]   = useState<"general" | "requisites" | "license" | "logos">("general");
@@ -1807,11 +1808,11 @@ function BranchModal({ branch, onClose, onSave }: {
   ] as const;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" />
+    <div className={inline ? "" : "fixed inset-0 z-50 flex items-center justify-center"} onClick={inline ? undefined : onClose}>
+      {!inline && <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" />}
       <div
-        className="relative bg-card rounded-2xl shadow-2xl border border-border w-[680px] max-w-[96vw] max-h-[90vh] flex flex-col"
-        onClick={e => e.stopPropagation()}
+        className={`${inline ? "" : "relative"} bg-card rounded-2xl shadow-sm border border-border flex flex-col ${inline ? "w-full" : "w-[680px] max-w-[96vw] max-h-[90vh]"}`}
+        onClick={inline ? undefined : e => e.stopPropagation()}
       >
         {/* Шапка */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
@@ -2106,6 +2107,11 @@ function BranchModal({ branch, onClose, onSave }: {
 }
 
 // ─── Раздел «Филиалы» ────────────────────────────────────────────────────────
+// ─── Права доступа для филиалов (из ролей) ────────────────────────────────────
+// В реальной системе — из контекста авторизации
+const CURRENT_USER_ROLE = "admin"; // admin | manager | readonly
+const CAN_EDIT_BRANCHES = CURRENT_USER_ROLE === "admin" || CURRENT_USER_ROLE === "manager";
+
 function BranchesSection() {
   const [branchList, setBranchList] = useState<BranchData[]>([
     {
@@ -2114,8 +2120,8 @@ function BranchesSection() {
       legalIndex: "101000", legalCity: "Москва", legalStreet: "ул. Ленина, 42",
       sameAddress: true, factIndex: "101000", factCity: "Москва", factStreet: "ул. Ленина, 42",
       inn: "7700000001", kpp: "770001001", ogrn: "1027700000001", legalForm: "ООО",
-      bankName: "", bik: "", checkingAccount: "", corrAccount: "",
-      licenseNumber: "ЛО-77-01-000001", licenseDate: "2020-01-15", licenseExpiry: "", licenseAuthority: "Департамент здравоохранения г. Москвы", licenseActivity: "",
+      bankName: "ПАО Сбербанк", bik: "044525225", checkingAccount: "40702810000000000001", corrAccount: "30101810400000000225",
+      licenseNumber: "ЛО-77-01-000001", licenseDate: "2020-01-15", licenseExpiry: "", licenseAuthority: "Департамент здравоохранения г. Москвы", licenseActivity: "Медицинская деятельность",
       logos: [], rooms: 8, doctors: 12,
     },
     {
@@ -2129,106 +2135,266 @@ function BranchesSection() {
       logos: [], rooms: 4, doctors: 6,
     },
   ]);
-  const [modalBranch, setModalBranch] = useState<BranchData | null>(null);
+
+  // view = список, detail = просмотр карточки, edit = режим редактирования
+  type ViewMode = "list" | "detail" | "edit";
+  const [mode, setMode]           = useState<ViewMode>("list");
+  const [selected, setSelected]   = useState<BranchData | null>(null);
+  const [editBranch, setEditBranch] = useState<BranchData | null>(null);
 
   const handleSave = (b: BranchData) => {
     setBranchList(prev => prev.some(x => x.id === b.id) ? prev.map(x => x.id === b.id ? b : x) : [...prev, b]);
-    setModalBranch(null);
+    // После сохранения — возвращаемся в просмотр (или список если новый)
+    if (b.id && branchList.some(x => x.id === b.id)) {
+      setSelected(b);
+      setMode("detail");
+    } else {
+      setMode("list");
+    }
+    setEditBranch(null);
   };
 
+  const openDetail = (b: BranchData) => { setSelected(b); setMode("detail"); };
+  const openEdit   = (b: BranchData) => { setEditBranch({ ...b }); setMode("edit"); };
+  const openNew    = () => { setEditBranch({ ...EMPTY_BRANCH }); setMode("edit"); };
+  const backToList = () => { setMode("list"); setSelected(null); setEditBranch(null); };
+
+  // ── РЕЖИМ ПРОСМОТРА КАРТОЧКИ ────────────────────────────────────────────────
+  if (mode === "detail" && selected) {
+    const b = branchList.find(x => x.id === selected.id) ?? selected;
+    const InfoRow = ({ icon, label, value }: { icon: string; label: string; value: string }) =>
+      value ? (
+        <div className="flex items-start gap-3 py-3 border-b border-border/50 last:border-0">
+          <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+            <Icon name={icon} size={14} className="text-muted-foreground" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] text-muted-foreground mb-0.5">{label}</p>
+            <p className="text-sm text-foreground font-medium">{value}</p>
+          </div>
+        </div>
+      ) : null;
+
+    const Section = ({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) => (
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/20">
+          <Icon name={icon} size={14} className="text-primary" />
+          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</span>
+        </div>
+        <div className="px-4">{children}</div>
+      </div>
+    );
+
+    return (
+      <div className="space-y-4 max-w-3xl">
+        {/* Хлебные крошки + действия */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm">
+            <button onClick={backToList} className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+              <Icon name="ChevronLeft" size={15} />
+              Филиалы
+            </button>
+            <Icon name="ChevronRight" size={13} className="text-muted-foreground/50" />
+            <span className="font-semibold text-foreground">{b.tradeName}</span>
+          </div>
+          {CAN_EDIT_BRANCHES ? (
+            <button onClick={() => openEdit(b)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white hover:opacity-90 transition-opacity"
+              style={{ background: "linear-gradient(90deg, hsl(199,85%,38%), hsl(162,60%,40%))" }}>
+              <Icon name="Pencil" size={14} />
+              Редактировать
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted border border-border text-xs text-muted-foreground">
+              <Icon name="Lock" size={13} />
+              Редактирование запрещено
+            </div>
+          )}
+        </div>
+
+        {/* Шапка карточки */}
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="h-2" style={{ background: "linear-gradient(90deg, hsl(199,85%,38%), hsl(162,60%,40%))" }} />
+          <div className="p-5 flex items-start gap-4">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0"
+              style={{ background: "linear-gradient(135deg, hsl(199,85%,38%), hsl(162,60%,40%))" }}>
+              <Icon name="Building2" size={26} className="text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <h2 className="text-xl font-bold text-foreground">{b.tradeName}</h2>
+                <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${
+                  b.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+                }`}>
+                  {b.status === "active" ? "Активен" : "Неактивен"}
+                </span>
+              </div>
+              {b.legalName && <p className="text-sm text-muted-foreground">{b.legalForm} «{b.legalName}»</p>}
+              <div className="flex flex-wrap gap-4 mt-3">
+                {[
+                  { icon: "DoorOpen", val: `${b.rooms} кабинетов` },
+                  { icon: "UserCheck", val: `${b.doctors} врачей` },
+                ].map(s => (
+                  <div key={s.icon} className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <Icon name={s.icon} size={14} className="text-primary" />
+                    {s.val}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Контакты */}
+          <Section title="Контакты" icon="Phone">
+            <InfoRow icon="Phone"   label="Телефон"  value={b.phone} />
+            <InfoRow icon="Mail"    label="Email"    value={b.email} />
+            <InfoRow icon="Globe"   label="Сайт"     value={b.website} />
+          </Section>
+
+          {/* Адрес */}
+          <Section title="Адрес" icon="MapPin">
+            <InfoRow icon="MapPin"  label="Юридический адрес"
+              value={[b.legalIndex, b.legalCity, b.legalStreet].filter(Boolean).join(", ")} />
+            <InfoRow icon="Navigation" label="Фактический адрес"
+              value={b.sameAddress
+                ? [b.legalIndex, b.legalCity, b.legalStreet].filter(Boolean).join(", ")
+                : [b.factIndex, b.factCity, b.factStreet].filter(Boolean).join(", ")} />
+          </Section>
+
+          {/* Реквизиты */}
+          <Section title="Реквизиты" icon="FileSpreadsheet">
+            <InfoRow icon="Hash"   label="ИНН"   value={b.inn} />
+            <InfoRow icon="Hash"   label="КПП"   value={b.kpp} />
+            <InfoRow icon="Hash"   label="ОГРН"  value={b.ogrn} />
+            <InfoRow icon="Landmark" label="Банк" value={b.bankName} />
+            <InfoRow icon="CreditCard" label="Расчётный счёт" value={b.checkingAccount} />
+          </Section>
+
+          {/* Лицензия */}
+          <Section title="Лицензия" icon="ShieldCheck">
+            <InfoRow icon="FileText"  label="Номер лицензии"  value={b.licenseNumber} />
+            <InfoRow icon="Calendar"  label="Дата выдачи"
+              value={b.licenseDate ? new Date(b.licenseDate).toLocaleDateString("ru-RU") : ""} />
+            <InfoRow icon="CalendarX" label="Срок действия"
+              value={b.licenseExpiry ? new Date(b.licenseExpiry).toLocaleDateString("ru-RU") : "Бессрочная"} />
+            <InfoRow icon="Building"  label="Орган выдачи"    value={b.licenseAuthority} />
+          </Section>
+        </div>
+
+        {/* Логотипы */}
+        {b.logos.length > 0 && (
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/20">
+              <Icon name="Image" size={14} className="text-primary" />
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Логотипы</span>
+            </div>
+            <div className="p-4 grid grid-cols-3 sm:grid-cols-4 gap-3">
+              {b.logos.map(logo => (
+                <div key={logo.id} className="border border-border rounded-lg p-2 bg-muted/20 text-center">
+                  <img src={logo.url} alt={logo.name} className="h-10 w-full object-contain mb-1.5" />
+                  <p className="text-[10px] text-muted-foreground truncate">{logo.purpose}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── РЕЖИМ РЕДАКТИРОВАНИЯ ────────────────────────────────────────────────────
+  if (mode === "edit" && editBranch) {
+    const isNew = !branchList.some(x => x.id === editBranch.id);
+    return (
+      <div className="max-w-3xl space-y-4">
+        {/* Хлебные крошки */}
+        <div className="flex items-center gap-2 text-sm">
+          <button onClick={backToList} className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+            <Icon name="ChevronLeft" size={15} />
+            Филиалы
+          </button>
+          {!isNew && selected && (
+            <>
+              <Icon name="ChevronRight" size={13} className="text-muted-foreground/50" />
+              <button onClick={() => { setMode("detail"); }} className="text-muted-foreground hover:text-foreground transition-colors">
+                {selected.tradeName}
+              </button>
+            </>
+          )}
+          <Icon name="ChevronRight" size={13} className="text-muted-foreground/50" />
+          <span className="font-semibold text-foreground">{isNew ? "Новый филиал" : "Редактирование"}</span>
+        </div>
+        <BranchModal
+          branch={editBranch}
+          onClose={() => isNew ? backToList() : setMode("detail")}
+          onSave={handleSave}
+          inline
+        />
+      </div>
+    );
+  }
+
+  // ── СПИСОК ──────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
-      {/* Шапка */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-foreground">Филиалы</h2>
           <p className="text-sm text-muted-foreground">{branchList.length} {branchList.length === 1 ? "филиал" : "филиала"}</p>
         </div>
-        <button
-          onClick={() => setModalBranch({ ...EMPTY_BRANCH })}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white hover:opacity-90 transition-opacity"
-          style={{ background: "linear-gradient(90deg, hsl(199,85%,38%), hsl(162,60%,40%))" }}>
-          <Icon name="Plus" size={16} />
-          Добавить филиал
-        </button>
+        {CAN_EDIT_BRANCHES && (
+          <button onClick={openNew}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white hover:opacity-90 transition-opacity"
+            style={{ background: "linear-gradient(90deg, hsl(199,85%,38%), hsl(162,60%,40%))" }}>
+            <Icon name="Plus" size={16} />
+            Добавить филиал
+          </button>
+        )}
       </div>
 
-      {/* Карточки */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {branchList.map(b => (
-          <div key={b.id} className="bg-card border border-border rounded-xl overflow-hidden card-hover group">
-            {/* Цветная полоска */}
+          <button key={b.id} onClick={() => openDetail(b)}
+            className="bg-card border border-border rounded-xl overflow-hidden text-left transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-primary/30 group">
             <div className="h-1.5" style={{ background: "linear-gradient(90deg, hsl(199,85%,38%), hsl(162,60%,40%))" }} />
             <div className="p-5">
-              <div className="flex items-start justify-between mb-3">
-                <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
                   style={{ background: "linear-gradient(135deg, hsl(199,85%,38%), hsl(162,60%,40%))" }}>
-                  <Icon name="Building2" size={20} className="text-white" />
+                  <Icon name="Building2" size={18} className="text-white" />
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${
                     b.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
                   }`}>
                     {b.status === "active" ? "Активен" : "Неактивен"}
                   </span>
+                  <Icon name="ChevronRight" size={14} className="text-muted-foreground/40 group-hover:text-primary transition-colors" />
                 </div>
               </div>
-
               <h3 className="font-bold text-foreground mb-0.5">{b.tradeName}</h3>
-              {b.legalName && <p className="text-xs text-muted-foreground mb-1">{b.legalName}</p>}
-              <p className="text-sm text-muted-foreground mb-3 flex items-center gap-1">
-                <Icon name="MapPin" size={12} className="shrink-0" />
+              <p className="text-xs text-muted-foreground mb-2 line-clamp-1">
                 {[b.legalCity, b.legalStreet].filter(Boolean).join(", ") || "Адрес не указан"}
               </p>
-
-              {/* Контакты */}
-              {b.phone && (
-                <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
-                  <Icon name="Phone" size={11} />
-                  {b.phone}
-                </p>
-              )}
-
-              {/* Лицензия */}
-              {b.licenseNumber && (
-                <p className="text-xs text-muted-foreground mb-3 flex items-center gap-1.5">
-                  <Icon name="ShieldCheck" size={11} className="text-green-500" />
-                  {b.licenseNumber}
-                </p>
-              )}
-
-              {/* Статистика */}
-              <div className="grid grid-cols-2 gap-2 mb-4">
-                <div className="bg-muted/40 rounded-lg py-2 text-center">
-                  <div className="text-xl font-bold text-primary">{b.rooms}</div>
-                  <div className="text-[10px] text-muted-foreground">кабинетов</div>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                {b.phone && <span className="flex items-center gap-1"><Icon name="Phone" size={10} />{b.phone}</span>}
+              </div>
+              <div className="flex gap-2 mt-3">
+                <div className="flex-1 bg-muted/40 rounded-lg py-1.5 text-center">
+                  <span className="text-sm font-bold text-primary">{b.rooms}</span>
+                  <span className="text-[10px] text-muted-foreground ml-1">кабинет.</span>
                 </div>
-                <div className="bg-muted/40 rounded-lg py-2 text-center">
-                  <div className="text-xl font-bold" style={{ color: "hsl(162,60%,40%)" }}>{b.doctors}</div>
-                  <div className="text-[10px] text-muted-foreground">врачей</div>
+                <div className="flex-1 bg-muted/40 rounded-lg py-1.5 text-center">
+                  <span className="text-sm font-bold" style={{ color: "hsl(162,60%,40%)" }}>{b.doctors}</span>
+                  <span className="text-[10px] text-muted-foreground ml-1">врачей</span>
                 </div>
               </div>
-
-              {/* Кнопки */}
-              <button
-                onClick={() => setModalBranch(b)}
-                className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium border border-border hover:bg-muted transition-colors text-foreground">
-                <Icon name="Pencil" size={13} />
-                Редактировать
-              </button>
             </div>
-          </div>
+          </button>
         ))}
       </div>
-
-      {/* Модалка */}
-      {modalBranch && (
-        <BranchModal
-          branch={modalBranch}
-          onClose={() => setModalBranch(null)}
-          onSave={handleSave}
-        />
-      )}
     </div>
   );
 }
@@ -2887,34 +3053,266 @@ function ClinicAnalysisReport() {
   );
 }
 
-function SettingsSection() {
-  const items = [
-    { icon: "Building2", title: "Реквизиты клиники", desc: "Название, адрес, ИНН, лицензия" },
-    { icon: "CreditCard", title: "Платёжные системы", desc: "ЮKassa, Сбербанк Эквайринг, Robokassa" },
-    { icon: "MessageSquare", title: "SMS и Email рассылки", desc: "Подключение СМС-шлюза, настройка уведомлений" },
-    { icon: "PenLine", title: "Электронная подпись", desc: "Интеграция с УКЭП, настройка подписания" },
-    { icon: "Bell", title: "Уведомления", desc: "Напоминания о приёмах, задачах" },
-    { icon: "Lock", title: "Роли и доступ", desc: "Права пользователей по ролям" },
-    { icon: "Smartphone", title: "Мобильное приложение", desc: "Настройки личного кабинета пациента" },
-    { icon: "Database", title: "Резервное копирование", desc: "Расписание и хранение бэкапов" },
-  ];
+// ─── Типы для ролей и доступа ─────────────────────────────────────────────────
+type Permission = "allow" | "deny";
+interface RolePermissions {
+  schedule_view: Permission;
+  schedule_edit: Permission;
+  patients_view: Permission;
+  patients_edit: Permission;
+  branches_view: Permission;
+  branches_edit: Permission;
+  reports_view: Permission;
+  plans_edit: Permission;
+  employees_edit: Permission;
+  settings_edit: Permission;
+  finances_view: Permission;
+}
+interface Role { id: string; name: string; desc: string; color: string; permissions: RolePermissions }
+
+const DEFAULT_PERMISSIONS: RolePermissions = {
+  schedule_view: "allow", schedule_edit: "allow",
+  patients_view: "allow", patients_edit: "allow",
+  branches_view: "allow", branches_edit: "allow",
+  reports_view:  "allow", plans_edit:    "allow",
+  employees_edit:"allow", settings_edit: "allow",
+  finances_view: "allow",
+};
+
+const PERM_GROUPS: { label: string; items: { key: keyof RolePermissions; label: string }[] }[] = [
+  {
+    label: "Расписание",
+    items: [
+      { key: "schedule_view", label: "Просмотр расписания" },
+      { key: "schedule_edit", label: "Редактирование расписания / запись пациентов" },
+    ],
+  },
+  {
+    label: "Пациенты",
+    items: [
+      { key: "patients_view", label: "Просмотр карточек пациентов" },
+      { key: "patients_edit", label: "Редактирование данных пациентов" },
+    ],
+  },
+  {
+    label: "Филиалы",
+    items: [
+      { key: "branches_view", label: "Просмотр данных филиалов" },
+      { key: "branches_edit", label: "Редактирование филиалов (реквизиты, лицензия, логотипы)" },
+    ],
+  },
+  {
+    label: "Аналитика и планы",
+    items: [
+      { key: "reports_view", label: "Просмотр отчётов и дашборда" },
+      { key: "plans_edit",   label: "Редактирование планов по выручке" },
+      { key: "finances_view","label": "Просмотр финансовых данных" } as { key: keyof RolePermissions; label: string },
+    ],
+  },
+  {
+    label: "Персонал и настройки",
+    items: [
+      { key: "employees_edit", label: "Редактирование сотрудников и графиков" },
+      { key: "settings_edit",  label: "Изменение настроек системы" },
+    ],
+  },
+];
+
+function RolesSection() {
+  const [roles, setRoles] = useState<Role[]>([
+    {
+      id: "admin", name: "Администратор", desc: "Полный доступ ко всем функциям системы", color: "hsl(199,85%,38%)",
+      permissions: { ...DEFAULT_PERMISSIONS },
+    },
+    {
+      id: "manager", name: "Управляющий", desc: "Управление клиникой без доступа к настройкам системы", color: "hsl(162,60%,40%)",
+      permissions: { ...DEFAULT_PERMISSIONS, settings_edit: "deny" },
+    },
+    {
+      id: "receptionist", name: "Регистратор", desc: "Запись пациентов, просмотр расписания", color: "hsl(38,92%,50%)",
+      permissions: {
+        schedule_view: "allow", schedule_edit: "allow",
+        patients_view: "allow", patients_edit: "allow",
+        branches_view: "allow", branches_edit: "deny",
+        reports_view:  "deny",  plans_edit:    "deny",
+        employees_edit:"deny",  settings_edit: "deny",
+        finances_view: "deny",
+      },
+    },
+    {
+      id: "readonly", name: "Только просмотр", desc: "Доступ только для чтения, без права редактирования", color: "#9b59b6",
+      permissions: {
+        schedule_view: "allow", schedule_edit: "deny",
+        patients_view: "allow", patients_edit: "deny",
+        branches_view: "allow", branches_edit: "deny",
+        reports_view:  "allow", plans_edit:    "deny",
+        employees_edit:"deny",  settings_edit: "deny",
+        finances_view: "allow",
+      },
+    },
+  ]);
+  const [activeRole, setActiveRole] = useState<string>("admin");
+  const [saved, setSaved] = useState(false);
+
+  const role = roles.find(r => r.id === activeRole)!;
+
+  const togglePerm = (key: keyof RolePermissions) => {
+    setRoles(prev => prev.map(r => r.id === activeRole
+      ? { ...r, permissions: { ...r.permissions, [key]: r.permissions[key] === "allow" ? "deny" : "allow" } }
+      : r
+    ));
+    setSaved(false);
+  };
+
+  const handleSave = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
+
+  const allowCount = Object.values(role.permissions).filter(v => v === "allow").length;
+  const totalCount = Object.values(role.permissions).length;
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-      {items.map((s, i) => (
-        <button
-          key={i}
-          className="bg-card border border-border rounded-xl p-5 card-hover text-left flex items-start gap-4"
-        >
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-accent">
-            <Icon name={s.icon} size={20} className="text-primary" />
+    <div className="flex gap-5">
+      {/* Левая панель — список ролей */}
+      <div className="w-56 shrink-0 space-y-1.5">
+        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-2 mb-2">Роли</p>
+        {roles.map(r => (
+          <button key={r.id} onClick={() => setActiveRole(r.id)}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all border ${
+              activeRole === r.id ? "border-transparent shadow-sm" : "border-border bg-card hover:bg-muted/40"
+            }`}
+            style={activeRole === r.id ? { background: r.color + "18", borderColor: r.color + "40" } : {}}>
+            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.color }} />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground truncate">{r.name}</p>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {/* Правая панель — права роли */}
+      <div className="flex-1 min-w-0">
+        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          {/* Шапка */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-border"
+            style={{ background: role.color + "0f" }}>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+                style={{ background: role.color }}>
+                <Icon name="Shield" size={17} className="text-white" />
+              </div>
+              <div>
+                <h3 className="font-bold text-foreground">{role.name}</h3>
+                <p className="text-xs text-muted-foreground">{role.desc}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Разрешений</p>
+                <p className="text-sm font-bold" style={{ color: role.color }}>{allowCount} / {totalCount}</p>
+              </div>
+              <button onClick={handleSave}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors"
+                style={{ background: saved ? "hsl(162,60%,40%)" : role.color }}>
+                <Icon name={saved ? "Check" : "Save"} size={14} />
+                {saved ? "Сохранено" : "Сохранить"}
+              </button>
+            </div>
+          </div>
+
+          {/* Группы прав */}
+          <div className="divide-y divide-border">
+            {PERM_GROUPS.map(group => (
+              <div key={group.label} className="px-5 py-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">{group.label}</p>
+                <div className="space-y-2.5">
+                  {group.items.map(item => {
+                    const val = role.permissions[item.key];
+                    const isAllow = val === "allow";
+                    return (
+                      <div key={item.key} className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-2.5">
+                          <Icon name={isAllow ? "CheckCircle2" : "XCircle"} size={16}
+                            className={isAllow ? "text-green-500 shrink-0" : "text-red-400 shrink-0"} />
+                          <span className="text-sm text-foreground">{item.label}</span>
+                        </div>
+                        <button onClick={() => togglePerm(item.key)}
+                          className={`relative shrink-0 w-11 h-6 rounded-full transition-colors ${isAllow ? "bg-green-500" : "bg-muted"}`}>
+                          <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${isAllow ? "translate-x-5.5" : "translate-x-0.5"}`}
+                            style={{ transform: isAllow ? "translateX(20px)" : "translateX(2px)" }} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsSection() {
+  const [openSection, setOpenSection] = useState<string | null>(null);
+  const items = [
+    { icon: "Building2",    title: "Реквизиты клиники",     desc: "Название, адрес, ИНН, лицензия" },
+    { icon: "CreditCard",   title: "Платёжные системы",      desc: "ЮKassa, Сбербанк Эквайринг, Robokassa" },
+    { icon: "MessageSquare",title: "SMS и Email рассылки",   desc: "Подключение СМС-шлюза, настройка уведомлений" },
+    { icon: "PenLine",      title: "Электронная подпись",    desc: "Интеграция с УКЭП, настройка подписания" },
+    { icon: "Bell",         title: "Уведомления",            desc: "Напоминания о приёмах, задачах" },
+    { icon: "Smartphone",   title: "Мобильное приложение",   desc: "Настройки личного кабинета пациента" },
+    { icon: "Database",     title: "Резервное копирование",  desc: "Расписание и хранение бэкапов" },
+  ];
+
+  if (openSection === "roles") {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 text-sm">
+          <button onClick={() => setOpenSection(null)} className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+            <Icon name="ChevronLeft" size={15} />
+            Настройки
+          </button>
+          <Icon name="ChevronRight" size={13} className="text-muted-foreground/50" />
+          <span className="font-semibold text-foreground">Роли и доступ</span>
+        </div>
+        <RolesSection />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-bold text-foreground">Настройки</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {/* Роли и доступ — выделенная карточка */}
+        <button onClick={() => setOpenSection("roles")}
+          className="bg-card border-2 border-primary/20 rounded-xl p-5 card-hover text-left flex items-start gap-4 col-span-1"
+          style={{ background: "hsl(199,85%,38%,0.04)" }}>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+            style={{ background: "hsl(199,85%,38%,0.15)" }}>
+            <Icon name="Lock" size={20} className="text-primary" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="font-semibold text-sm text-foreground mb-0.5">{s.title}</div>
-            <div className="text-xs text-muted-foreground">{s.desc}</div>
+            <div className="font-semibold text-sm text-foreground mb-0.5">Роли и доступ</div>
+            <div className="text-xs text-muted-foreground">Настройка прав по ролям: расписание, филиалы, отчёты и др.</div>
           </div>
-          <Icon name="ChevronRight" size={16} className="text-muted-foreground shrink-0 mt-1" />
+          <Icon name="ChevronRight" size={16} className="text-primary shrink-0 mt-1" />
         </button>
-      ))}
+
+        {items.map((s, i) => (
+          <button key={i}
+            className="bg-card border border-border rounded-xl p-5 card-hover text-left flex items-start gap-4">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-accent">
+              <Icon name={s.icon} size={20} className="text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-sm text-foreground mb-0.5">{s.title}</div>
+              <div className="text-xs text-muted-foreground">{s.desc}</div>
+            </div>
+            <Icon name="ChevronRight" size={16} className="text-muted-foreground shrink-0 mt-1" />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
