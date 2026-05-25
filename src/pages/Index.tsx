@@ -3,39 +3,76 @@ import Icon from "@/components/ui/icon";
 import Schedule from "@/components/Schedule";
 
 type Section =
-  | "dashboard"
   | "schedule"
+  | "dashboard"
   | "patients"
+  | "crm"
+  | "reports"
+  | "plans"
+  | "finances-payments"
+  | "finances-dds"
+  | "finances-pnl"
   | "protocols"
   | "documents"
   | "prices"
-  | "reports"
-  | "plans"
-  | "work-schedule"
   | "print-services"
-  | "crm"
+  | "work-schedule"
   | "employees"
   | "branches"
   | "rooms"
   | "settings";
 
-const navItems: { id: Section; label: string; icon: string; group: string }[] = [
-  { id: "schedule", label: "Расписание приёмов", icon: "CalendarDays", group: "main" },
-  { id: "dashboard", label: "Дашборд", icon: "LayoutDashboard", group: "main" },
-  { id: "patients", label: "Пациенты", icon: "Users", group: "main" },
-  { id: "protocols", label: "Протоколы и шаблоны", icon: "FileText", group: "main" },
-  { id: "documents", label: "Договора и ИДС", icon: "FolderOpen", group: "docs" },
-  { id: "prices", label: "Прайс-лист", icon: "Tag", group: "docs" },
-  { id: "print-services", label: "Перечень услуг", icon: "Printer", group: "docs" },
-  { id: "reports", label: "Отчёты", icon: "BarChart3", group: "analytics" },
-  { id: "plans",   label: "Планы",  icon: "Target",    group: "analytics" },
-  { id: "crm", label: "CRM", icon: "Handshake", group: "analytics" },
-  { id: "work-schedule", label: "График работы", icon: "Clock", group: "staff" },
-  { id: "employees", label: "Сотрудники", icon: "UserCheck", group: "staff" },
-  { id: "branches", label: "Филиалы", icon: "Building2", group: "staff" },
-  { id: "rooms", label: "Кабинеты", icon: "DoorOpen", group: "staff" },
-  { id: "settings", label: "Настройки", icon: "Settings", group: "system" },
+// ─── Новая структура верхней навигации ───────────────────────────────────────
+interface NavChild { id: Section; label: string; icon: string }
+interface NavGroup  { id: string; label: string; icon: string; children: NavChild[] }
+
+const TOP_NAV: NavGroup[] = [
+  {
+    id: "finances", label: "Финансы", icon: "Banknote",
+    children: [
+      { id: "finances-payments", label: "Платежи",  icon: "CreditCard" },
+      { id: "finances-dds",      label: "ДДС",       icon: "ArrowLeftRight" },
+      { id: "finances-pnl",      label: "ОПиУ",      icon: "TrendingUp" },
+    ],
+  },
+  {
+    id: "patients", label: "Пациенты", icon: "Users",
+    children: [
+      { id: "patients", label: "Пациенты", icon: "Users" },
+      { id: "crm",      label: "CRM",      icon: "Handshake" },
+    ],
+  },
+  {
+    id: "analytics", label: "Аналитика", icon: "BarChart3",
+    children: [
+      { id: "dashboard", label: "Дашборд",  icon: "LayoutDashboard" },
+      { id: "reports",   label: "Отчёты",   icon: "BarChart3" },
+      { id: "plans",     label: "Планы",    icon: "Target" },
+    ],
+  },
+  {
+    id: "clinic", label: "Клиника", icon: "Building2",
+    children: [
+      { id: "employees",     label: "Сотрудники",            icon: "UserCheck" },
+      { id: "branches",      label: "Филиалы",               icon: "Building2" },
+      { id: "work-schedule", label: "График работы",         icon: "Clock" },
+      { id: "rooms",         label: "Кабинеты",              icon: "DoorOpen" },
+      { id: "protocols",     label: "Протоколы и шаблоны",   icon: "FileText" },
+      { id: "documents",     label: "Договора и ИДС",        icon: "FolderOpen" },
+      { id: "prices",        label: "Прайс-лист",            icon: "Tag" },
+      { id: "print-services",label: "Перечень услуг",        icon: "Printer" },
+      { id: "settings",      label: "Настройки",             icon: "Settings" },
+    ],
+  },
 ];
+
+// Вспомогалка: по Section найти группу
+function findGroup(section: Section): NavGroup | undefined {
+  return TOP_NAV.find(g => g.children.some(c => c.id === section));
+}
+
+// Все дочерние секции для flatMap
+const allNavItems = TOP_NAV.flatMap(g => g.children);
 
 const groupLabels: Record<string, string> = {
   main: "Клиника",
@@ -124,162 +161,200 @@ interface IndexProps {
 }
 
 export default function Index({ user }: IndexProps) {
-  const [active, setActive] = useState<Section>("schedule");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [active, setActive]       = useState<Section>("schedule");
+  const [openGroup, setOpenGroup] = useState<string | null>(null); // hover-дропдаун
+  const [pinnedGroup, setPinnedGroup] = useState<string | null>(null); // закреплённый сайдбар
 
-  const grouped: Record<string, typeof navItems> = {};
-  navItems.forEach((item) => {
-    if (!grouped[item.group]) grouped[item.group] = [];
-    grouped[item.group].push(item);
-  });
+  const activeGroup = findGroup(active);
+
+  // Сайдбар показываем если есть закреплённая группа и это не расписание
+  const showSidebar = active !== "schedule" && pinnedGroup !== null;
+  const sidebarGroup = TOP_NAV.find(g => g.id === pinnedGroup);
+
+  const handleNavClick = (group: NavGroup) => {
+    // Клик по группе: закрепляем сайдбар и открываем первый дочерний пункт
+    if (pinnedGroup === group.id) {
+      setPinnedGroup(null);
+    } else {
+      setPinnedGroup(group.id);
+      // Если текущий active не в этой группе — переключаем на первый пункт
+      if (!group.children.some(c => c.id === active)) {
+        setActive(group.children[0].id);
+      }
+    }
+    setOpenGroup(null);
+  };
+
+  const handleScheduleClick = () => {
+    setActive("schedule");
+    setPinnedGroup(null);
+    setOpenGroup(null);
+  };
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden font-golos">
-      {/* Sidebar */}
-      <aside
-        className={`sidebar-gradient flex flex-col transition-all duration-300 ${
-          sidebarCollapsed ? "w-16" : "w-64"
-        } shrink-0 border-r border-sidebar-border`}
-      >
-        {/* Logo */}
-        <div className="flex items-center gap-3 px-4 py-5 border-b border-sidebar-border">
-          <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-            style={{ background: "linear-gradient(135deg, hsl(199,85%,50%), hsl(162,60%,45%))" }}
-          >
+    <div className="flex flex-col h-screen bg-background overflow-hidden font-golos">
+
+      {/* ═══ ВЕРХНЯЯ НАВИГАЦИЯ ═══ */}
+      <header className="sidebar-gradient shrink-0 flex items-center px-4 h-14 border-b border-sidebar-border z-50 relative">
+
+        {/* Логотип */}
+        <div className="flex items-center gap-2.5 mr-6">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+            style={{ background: "linear-gradient(135deg, hsl(199,85%,55%), hsl(162,60%,48%))" }}>
             <Icon name="Heart" size={16} className="text-white" />
           </div>
-          {!sidebarCollapsed && (
-            <div className="animate-fade-in">
-              <div className="text-white font-bold text-sm leading-tight">Ваш доктор</div>
-              <div className="text-sidebar-foreground text-xs opacity-60">МИС v1.0</div>
-            </div>
-          )}
-          {!sidebarCollapsed && (
-            <button
-              onClick={() => setSidebarCollapsed(true)}
-              className="ml-auto text-sidebar-foreground hover:text-white transition-colors p-1 rounded hover:bg-sidebar-accent"
-              title="Свернуть меню"
-            >
-              <Icon name="ChevronLeft" size={16} />
-            </button>
-          )}
+          <div>
+            <div className="text-white font-bold text-sm leading-tight">Ваш доктор</div>
+            <div className="text-white/50 text-[10px]">МИС v1.0</div>
+          </div>
         </div>
 
-        {/* Кнопка развернуть (только при свёрнутом) */}
-        {sidebarCollapsed && (
-          <button
-            onClick={() => setSidebarCollapsed(false)}
-            className="mx-auto mt-2 mb-1 w-9 h-9 flex items-center justify-center rounded-lg hover:bg-sidebar-accent text-sidebar-foreground hover:text-white transition-colors border border-sidebar-border"
-            title="Развернуть меню"
-          >
-            <Icon name="ChevronRight" size={16} />
-          </button>
-        )}
+        {/* ── Расписание (отдельный пункт) ── */}
+        <button
+          onClick={handleScheduleClick}
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg mr-1 transition-all text-sm font-medium ${
+            active === "schedule"
+              ? "bg-white/20 text-white"
+              : "text-white/70 hover:bg-white/10 hover:text-white"
+          }`}
+        >
+          <Icon name="CalendarDays" size={17} />
+          <span>Расписание</span>
+        </button>
 
-        {/* Nav */}
-        <nav className="flex-1 overflow-y-auto scrollbar-thin py-3 px-2">
-          {Object.entries(grouped).map(([group, items]) => (
-            <div key={group} className="mb-4">
-              {!sidebarCollapsed && (
-                <div className="px-3 mb-1 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground opacity-40">
-                  {groupLabels[group]}
+        {/* ── Группы с выпадающим меню ── */}
+        {TOP_NAV.map(group => {
+          const isOpen   = openGroup === group.id;
+          const isPinned = pinnedGroup === group.id;
+          const hasActive = group.children.some(c => c.id === active);
+          return (
+            <div key={group.id} className="relative"
+              onMouseEnter={() => setOpenGroup(group.id)}
+              onMouseLeave={() => setOpenGroup(null)}>
+              <button
+                onClick={() => handleNavClick(group)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg mr-1 transition-all text-sm font-medium ${
+                  isPinned || hasActive
+                    ? "bg-white/20 text-white"
+                    : "text-white/70 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                <Icon name={group.icon} size={17} />
+                <span>{group.label}</span>
+                <Icon name="ChevronDown" size={13} className={`transition-transform ${isOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {/* Выпадающее меню при наведении */}
+              {isOpen && (
+                <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-xl shadow-2xl py-1.5 z-50 min-w-[200px] animate-fade-in">
+                  <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">
+                    {group.label}
+                  </div>
+                  {group.children.map(child => (
+                    <button
+                      key={child.id}
+                      onClick={() => { setActive(child.id); setPinnedGroup(group.id); setOpenGroup(null); }}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${
+                        active === child.id
+                          ? "bg-primary/10 text-primary font-medium"
+                          : "text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      <Icon name={child.icon} size={15} className={active === child.id ? "text-primary" : "text-muted-foreground"} />
+                      {child.label}
+                    </button>
+                  ))}
                 </div>
               )}
-              {items.map((item) => (
+            </div>
+          );
+        })}
+
+        {/* ── Правая часть ── */}
+        <div className="ml-auto flex items-center gap-2">
+          <button className="relative p-2 rounded-lg hover:bg-white/10 transition-colors">
+            <Icon name="Bell" size={17} className="text-white/80" />
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-400" />
+          </button>
+          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-white/10 cursor-pointer transition-colors">
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
+              style={{ background: "linear-gradient(135deg, hsl(199,85%,45%), hsl(162,60%,40%))" }}>
+              {user?.name?.slice(0, 2).toUpperCase() || "АД"}
+            </div>
+            <div>
+              <div className="text-white text-xs font-medium leading-tight">{user?.name || "Администратор"}</div>
+              <div className="text-white/50 text-[10px] capitalize">{user?.role || "admin"}</div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* ═══ ТЕЛО: контекстный сайдбар + контент ═══ */}
+      <div className="flex flex-1 overflow-hidden">
+
+        {/* Контекстный левый сайдбар */}
+        {showSidebar && sidebarGroup && (
+          <aside className="w-52 shrink-0 sidebar-gradient border-r border-sidebar-border flex flex-col overflow-y-auto scrollbar-thin">
+            <div className="px-3 pt-4 pb-2">
+              <div className="text-white/50 text-[10px] font-bold uppercase tracking-wider px-2 mb-1">
+                {sidebarGroup.label}
+              </div>
+              {sidebarGroup.children.map(child => (
                 <button
-                  key={item.id}
-                  onClick={() => setActive(item.id)}
-                  title={sidebarCollapsed ? item.label : undefined}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-0.5 text-sm font-medium transition-all duration-150 ${
-                    active === item.id
+                  key={child.id}
+                  onClick={() => setActive(child.id)}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg mb-0.5 text-sm font-medium transition-all ${
+                    active === child.id
                       ? "nav-item-active shadow-sm"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                  } ${sidebarCollapsed ? "justify-center" : ""}`}
+                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-white"
+                  }`}
                 >
-                  <Icon name={item.icon} size={18} className="shrink-0" />
-                  {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                  <Icon name={child.icon} size={16} className="shrink-0" />
+                  <span className="truncate">{child.label}</span>
                 </button>
               ))}
             </div>
-          ))}
-        </nav>
-
-        {/* User */}
-        <div className="px-3 py-3 border-t border-sidebar-border">
-          <div
-            className={`flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-sidebar-accent cursor-pointer transition-colors ${
-              sidebarCollapsed ? "justify-center" : ""
-            }`}
-          >
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold text-white"
-              style={{ background: "linear-gradient(135deg, hsl(199,85%,45%), hsl(162,60%,40%))" }}
-            >
-              {user?.name?.slice(0, 2).toUpperCase() || "АД"}
-            </div>
-            {!sidebarCollapsed && (
-              <div className="min-w-0">
-                <div className="text-sidebar-foreground text-xs font-medium truncate">{user?.name || "Администратор"}</div>
-                <div className="text-sidebar-foreground text-xs opacity-50 truncate capitalize">{user?.role || "admin"}</div>
-              </div>
-            )}
-          </div>
-        </div>
-      </aside>
-
-      {/* Main */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-        {/* Topbar — скрыт для расписания */}
-        {active !== "schedule" && (
-          <header className="bg-card border-b border-border flex items-center justify-between px-6 py-3.5 shrink-0">
-            <div>
-              <h1 className="text-lg font-bold text-foreground">
-                {navItems.find((n) => n.id === active)?.label || "Дашборд"}
-              </h1>
-              <p className="text-xs text-muted-foreground">
-                {new Date().toLocaleDateString("ru-RU", {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                })}
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <button className="relative p-2 rounded-lg hover:bg-muted transition-colors">
-                <Icon name="Bell" size={18} className="text-muted-foreground" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500"></span>
-              </button>
-              <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity">
-                <Icon name="Plus" size={15} />
-                Новый приём
-              </button>
-            </div>
-          </header>
+          </aside>
         )}
 
-        {/* Content */}
-        <div className={`flex-1 ${active === "schedule" ? "overflow-hidden flex flex-col p-0" : "overflow-y-auto scrollbar-thin p-6"}`}>
-          <div className={`animate-fade-in ${active === "schedule" ? "h-full flex flex-col" : "max-w-[1280px]"}`}>
-            {active === "dashboard" && <DashboardSection />}
-            {active === "schedule" && <Schedule />}
-            {active === "patients" && <PatientsSection />}
-            {active === "protocols" && <ProtocolsSection />}
-            {active === "documents" && <DocumentsSection />}
-            {active === "prices" && <PricesSection />}
-            {active === "reports" && <ReportsSection />}
-            {active === "plans"   && <PlansSection />}
-            {active === "work-schedule" && <WorkScheduleSection />}
-            {active === "print-services" && <PrintServicesSection />}
-            {active === "crm" && <CRMSection />}
-            {active === "employees" && <EmployeesSection />}
-            {active === "branches" && <BranchesSection />}
-            {active === "rooms" && <RoomsSection />}
-            {active === "settings" && <SettingsSection />}
+        {/* Контент */}
+        <main className="flex-1 flex flex-col overflow-hidden">
+          <div className={`flex-1 ${active === "schedule" ? "overflow-hidden flex flex-col p-0" : "overflow-y-auto scrollbar-thin p-6"}`}>
+            <div className={`animate-fade-in ${active === "schedule" ? "h-full flex flex-col" : "max-w-[1280px]"}`}>
+              {active === "schedule"          && <Schedule />}
+              {active === "dashboard"         && <DashboardSection />}
+              {active === "patients"          && <PatientsSection />}
+              {active === "crm"               && <CRMSection />}
+              {active === "reports"           && <ReportsSection />}
+              {active === "plans"             && <PlansSection />}
+              {active === "finances-payments" && <FinancesPlaceholder title="Платежи" />}
+              {active === "finances-dds"      && <FinancesPlaceholder title="ДДС" />}
+              {active === "finances-pnl"      && <FinancesPlaceholder title="ОПиУ" />}
+              {active === "protocols"         && <ProtocolsSection />}
+              {active === "documents"         && <DocumentsSection />}
+              {active === "prices"            && <PricesSection />}
+              {active === "print-services"    && <PrintServicesSection />}
+              {active === "work-schedule"     && <WorkScheduleSection />}
+              {active === "employees"         && <EmployeesSection />}
+              {active === "branches"          && <BranchesSection />}
+              {active === "rooms"             && <RoomsSection />}
+              {active === "settings"          && <SettingsSection />}
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function FinancesPlaceholder({ title }: { title: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-64 gap-3 text-center">
+      <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
+        <Icon name="Banknote" size={28} className="text-muted-foreground" />
+      </div>
+      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      <p className="text-sm text-muted-foreground max-w-xs">Раздел в разработке — будет добавлен в ближайшее время</p>
     </div>
   );
 }
