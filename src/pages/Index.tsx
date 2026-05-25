@@ -1730,6 +1730,41 @@ const EMPTY_BRANCH: BranchData = {
 const LOGO_PURPOSES = ["Основной логотип", "Логотип для печати", "Мобильное приложение", "Сайт", "Факсимиле"];
 const LEGAL_FORMS   = ["ООО", "ОАО", "ЗАО", "ПАО", "АО", "ИП", "НКО", "ГБУЗ", "ФГБУ"];
 
+// ─── Переиспользуемые компоненты полей (объявлены ВНЕ функций-родителей!) ──────
+function BranchField({ label, value, onChange, placeholder, type = "text", required }: {
+  label: string; value: string; onChange: (v: string) => void;
+  placeholder?: string; type?: string; required?: boolean;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-muted-foreground mb-1">
+        {label}{required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      <input
+        type={type} value={value} onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-background outline-none focus:border-primary transition-colors"
+      />
+    </div>
+  );
+}
+
+function BranchTextarea({ label, value, onChange, placeholder, rows = 3 }: {
+  label: string; value: string; onChange: (v: string) => void;
+  placeholder?: string; rows?: number;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-muted-foreground mb-1">{label}</label>
+      <textarea
+        value={value} onChange={e => onChange(e.target.value)}
+        rows={rows} placeholder={placeholder}
+        className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-background outline-none focus:border-primary transition-colors resize-none"
+      />
+    </div>
+  );
+}
+
 // ─── Модальное окно филиала ───────────────────────────────────────────────────
 function BranchModal({ branch, onClose, onSave, inline = false }: {
   branch: BranchData;
@@ -1783,22 +1818,6 @@ function BranchModal({ branch, onClose, onSave, inline = false }: {
   const removeLogo = (id: string) => set("logos", form.logos.filter(l => l.id !== id));
 
   const canSave = form.tradeName.trim() && form.legalCity.trim();
-
-  const Field = ({ label, value, onChange, placeholder, type = "text", required, half }: {
-    label: string; value: string; onChange: (v: string) => void;
-    placeholder?: string; type?: string; required?: boolean; half?: boolean;
-  }) => (
-    <div className={half ? "" : ""}>
-      <label className="block text-xs font-medium text-muted-foreground mb-1">
-        {label}{required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
-      <input
-        type={type} value={value} onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-background outline-none focus:border-primary transition-colors"
-      />
-    </div>
-  );
 
   const TABS = [
     { id: "general",    label: "Основное",    icon: "Building2" },
@@ -1871,9 +1890,9 @@ function BranchModal({ branch, onClose, onSave, inline = false }: {
               {/* Названия */}
               <div className="space-y-3">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Название</h3>
-                <Field label="Торговое название" value={form.tradeName} onChange={v => set("tradeName", v)}
+                <BranchField label="Торговое название" value={form.tradeName} onChange={v => set("tradeName", v)}
                   placeholder="Например: Клиника «Ваш доктор» — Центральный" required />
-                <Field label="Юридическое название организации" value={form.legalName} onChange={v => set("legalName", v)}
+                <BranchField label="Юридическое название организации" value={form.legalName} onChange={v => set("legalName", v)}
                   placeholder="Например: ООО «Медицинский центр»" />
               </div>
 
@@ -1881,22 +1900,22 @@ function BranchModal({ branch, onClose, onSave, inline = false }: {
               <div className="space-y-3">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Контакты</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Телефон" value={form.phone} onChange={v => set("phone", v)} placeholder="+7 (___) ___-__-__" />
-                  <Field label="Email" value={form.email} onChange={v => set("email", v)} placeholder="clinic@example.ru" type="email" />
+                  <BranchField label="Телефон" value={form.phone} onChange={v => set("phone", v)} placeholder="+7 (___) ___-__-__" />
+                  <BranchField label="Email" value={form.email} onChange={v => set("email", v)} placeholder="clinic@example.ru" type="email" />
                 </div>
-                <Field label="Сайт" value={form.website} onChange={v => set("website", v)} placeholder="https://example.ru" />
+                <BranchField label="Сайт" value={form.website} onChange={v => set("website", v)} placeholder="https://example.ru" />
               </div>
 
               {/* Юридический адрес */}
               <div className="space-y-3">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Юридический адрес</h3>
                 <div className="grid grid-cols-3 gap-3">
-                  <Field label="Индекс" value={form.legalIndex} onChange={v => setLegal("legalIndex", v)} placeholder="123456" />
+                  <BranchField label="Индекс" value={form.legalIndex} onChange={v => setLegal("legalIndex", v)} placeholder="123456" />
                   <div className="col-span-2">
-                    <Field label="Город" value={form.legalCity} onChange={v => setLegal("legalCity", v)} placeholder="Москва" required />
+                    <BranchField label="Город" value={form.legalCity} onChange={v => setLegal("legalCity", v)} placeholder="Москва" required />
                   </div>
                 </div>
-                <Field label="Улица, дом, офис" value={form.legalStreet} onChange={v => setLegal("legalStreet", v)}
+                <BranchField label="Улица, дом, офис" value={form.legalStreet} onChange={v => setLegal("legalStreet", v)}
                   placeholder="ул. Ленина, д. 42, оф. 101" />
               </div>
 
@@ -1922,12 +1941,12 @@ function BranchModal({ branch, onClose, onSave, inline = false }: {
                 ) : (
                   <>
                     <div className="grid grid-cols-3 gap-3">
-                      <Field label="Индекс" value={form.factIndex} onChange={v => set("factIndex", v)} placeholder="123456" />
+                      <BranchField label="Индекс" value={form.factIndex} onChange={v => set("factIndex", v)} placeholder="123456" />
                       <div className="col-span-2">
-                        <Field label="Город" value={form.factCity} onChange={v => set("factCity", v)} placeholder="Москва" />
+                        <BranchField label="Город" value={form.factCity} onChange={v => set("factCity", v)} placeholder="Москва" />
                       </div>
                     </div>
-                    <Field label="Улица, дом, офис" value={form.factStreet} onChange={v => set("factStreet", v)}
+                    <BranchField label="Улица, дом, офис" value={form.factStreet} onChange={v => set("factStreet", v)}
                       placeholder="ул. Пушкина, д. 10" />
                   </>
                 )}
@@ -1956,22 +1975,22 @@ function BranchModal({ branch, onClose, onSave, inline = false }: {
               <div className="space-y-3">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Налоговые данные</h3>
                 <div className="grid grid-cols-3 gap-3">
-                  <Field label="ИНН" value={form.inn} onChange={v => set("inn", v)} placeholder="7700000000" />
-                  <Field label="КПП" value={form.kpp} onChange={v => set("kpp", v)} placeholder="770001001" />
-                  <Field label="ОГРН / ОГРНИП" value={form.ogrn} onChange={v => set("ogrn", v)} placeholder="1027700000000" />
+                  <BranchField label="ИНН" value={form.inn} onChange={v => set("inn", v)} placeholder="7700000000" />
+                  <BranchField label="КПП" value={form.kpp} onChange={v => set("kpp", v)} placeholder="770001001" />
+                  <BranchField label="ОГРН / ОГРНИП" value={form.ogrn} onChange={v => set("ogrn", v)} placeholder="1027700000000" />
                 </div>
               </div>
 
               <div className="space-y-3">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Банковские реквизиты</h3>
-                <Field label="Банк" value={form.bankName} onChange={v => set("bankName", v)} placeholder="ПАО Сбербанк" />
+                <BranchField label="Банк" value={form.bankName} onChange={v => set("bankName", v)} placeholder="ПАО Сбербанк" />
                 <div className="grid grid-cols-3 gap-3">
-                  <Field label="БИК" value={form.bik} onChange={v => set("bik", v)} placeholder="044525225" />
+                  <BranchField label="БИК" value={form.bik} onChange={v => set("bik", v)} placeholder="044525225" />
                   <div className="col-span-2">
-                    <Field label="Расчётный счёт" value={form.checkingAccount} onChange={v => set("checkingAccount", v)} placeholder="40702810000000000000" />
+                    <BranchField label="Расчётный счёт" value={form.checkingAccount} onChange={v => set("checkingAccount", v)} placeholder="40702810000000000000" />
                   </div>
                 </div>
-                <Field label="Корреспондентский счёт" value={form.corrAccount} onChange={v => set("corrAccount", v)} placeholder="30101810400000000225" />
+                <BranchField label="Корреспондентский счёт" value={form.corrAccount} onChange={v => set("corrAccount", v)} placeholder="30101810400000000225" />
               </div>
             </div>
           )}
@@ -1990,20 +2009,17 @@ function BranchModal({ branch, onClose, onSave, inline = false }: {
 
               <div className="space-y-3">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Данные лицензии</h3>
-                <Field label="Номер лицензии" value={form.licenseNumber} onChange={v => set("licenseNumber", v)}
+                <BranchField label="Номер лицензии" value={form.licenseNumber} onChange={v => set("licenseNumber", v)}
                   placeholder="ЛО-77-01-000000" />
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Дата выдачи" value={form.licenseDate} onChange={v => set("licenseDate", v)} type="date" />
-                  <Field label="Срок действия (если ограничен)" value={form.licenseExpiry} onChange={v => set("licenseExpiry", v)} type="date" />
+                  <BranchField label="Дата выдачи" value={form.licenseDate} onChange={v => set("licenseDate", v)} type="date" />
+                  <BranchField label="Срок действия (если ограничен)" value={form.licenseExpiry} onChange={v => set("licenseExpiry", v)} type="date" />
                 </div>
-                <Field label="Орган, выдавший лицензию" value={form.licenseAuthority} onChange={v => set("licenseAuthority", v)}
+                <BranchField label="Орган, выдавший лицензию" value={form.licenseAuthority} onChange={v => set("licenseAuthority", v)}
                   placeholder="Департамент здравоохранения г. Москвы" />
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Лицензируемый вид деятельности</label>
-                  <textarea value={form.licenseActivity} onChange={e => set("licenseActivity", e.target.value)} rows={3}
-                    placeholder="Медицинская деятельность (за исключением деятельности, осуществляемой медицинскими организациями и другими организациями, входящими в частную систему здравоохранения, на территории инновационного центра «Сколково»)"
-                    className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-background outline-none focus:border-primary transition-colors resize-none" />
-                </div>
+                <BranchTextarea label="Лицензируемый вид деятельности" value={form.licenseActivity}
+                  onChange={v => set("licenseActivity", v)} rows={3}
+                  placeholder="Медицинская деятельность (за исключением деятельности, осуществляемой медицинскими организациями...)" />
               </div>
 
               {/* Статус лицензии */}
