@@ -1,11 +1,22 @@
-import React, { useState } from "react";
+import React, { useState, lazy, Suspense } from "react";
 import Icon from "@/components/ui/icon";
-import Schedule from "@/components/Schedule";
 import { fmtNum, fmtRub, fmtMoney, pct } from "@/lib/format";
-import BranchesSection from "@/components/sections/BranchesSection";
-import ClinicAnalysisReport from "@/components/sections/ClinicAnalysisReport";
-import AppointmentsReport from "@/components/sections/AppointmentsReport";
-import PlansSection from "@/components/sections/PlansSection";
+
+// Тяжёлые секции загружаются лениво — каждая попадает в отдельный chunk
+// и качается только при первом открытии своей вкладки.
+const Schedule             = lazy(() => import("@/components/Schedule"));
+const BranchesSection      = lazy(() => import("@/components/sections/BranchesSection"));
+const ClinicAnalysisReport = lazy(() => import("@/components/sections/ClinicAnalysisReport"));
+const AppointmentsReport   = lazy(() => import("@/components/sections/AppointmentsReport"));
+const PlansSection         = lazy(() => import("@/components/sections/PlansSection"));
+
+// Скелет-заглушка пока подтягивается чанк раздела
+const SectionFallback = () => (
+  <div className="flex items-center justify-center h-64 text-sm text-muted-foreground gap-2">
+    <Icon name="Loader2" size={18} className="animate-spin" />
+    Загрузка раздела…
+  </div>
+);
 
 type Section =
   | "schedule"
@@ -326,24 +337,26 @@ export default function Index({ user }: IndexProps) {
         <main className="flex-1 flex flex-col overflow-hidden">
           <div className={`flex-1 ${active === "schedule" ? "overflow-hidden flex flex-col p-0" : "overflow-y-auto scrollbar-thin p-6"}`}>
             <div className={`animate-fade-in ${active === "schedule" ? "h-full flex flex-col" : "max-w-[1280px]"}`}>
-              {active === "schedule"          && <Schedule />}
-              {active === "dashboard"         && <DashboardSection />}
-              {active === "patients"          && <PatientsSection />}
-              {active === "crm"               && <CRMSection />}
-              {active === "reports"           && <ReportsSection />}
-              {active === "plans"             && <PlansSection />}
-              {active === "finances-payments" && <FinancesPlaceholder title="Платежи" />}
-              {active === "finances-dds"      && <FinancesPlaceholder title="ДДС" />}
-              {active === "finances-pnl"      && <FinancesPlaceholder title="ОПиУ" />}
-              {active === "protocols"         && <ProtocolsSection />}
-              {active === "documents"         && <DocumentsSection />}
-              {active === "prices"            && <PricesSection />}
-              {active === "print-services"    && <PrintServicesSection />}
-              {active === "work-schedule"     && <WorkScheduleSection />}
-              {active === "employees"         && <EmployeesSection />}
-              {active === "branches"          && <BranchesSection />}
-              {active === "rooms"             && <RoomsSection />}
-              {active === "settings"          && <SettingsSection />}
+              <Suspense fallback={<SectionFallback />}>
+                {active === "schedule"          && <Schedule />}
+                {active === "dashboard"         && <DashboardSection />}
+                {active === "patients"          && <PatientsSection />}
+                {active === "crm"               && <CRMSection />}
+                {active === "reports"           && <ReportsSection />}
+                {active === "plans"             && <PlansSection />}
+                {active === "finances-payments" && <FinancesPlaceholder title="Платежи" />}
+                {active === "finances-dds"      && <FinancesPlaceholder title="ДДС" />}
+                {active === "finances-pnl"      && <FinancesPlaceholder title="ОПиУ" />}
+                {active === "protocols"         && <ProtocolsSection />}
+                {active === "documents"         && <DocumentsSection />}
+                {active === "prices"            && <PricesSection />}
+                {active === "print-services"    && <PrintServicesSection />}
+                {active === "work-schedule"     && <WorkScheduleSection />}
+                {active === "employees"         && <EmployeesSection />}
+                {active === "branches"          && <BranchesSection />}
+                {active === "rooms"             && <RoomsSection />}
+                {active === "settings"          && <SettingsSection />}
+              </Suspense>
             </div>
           </div>
         </main>
@@ -1004,12 +1017,18 @@ function ReportsSection() {
       {/* Отчёт по приёмам */}
       {activeReport === "appointments" && (
         <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm" style={{ minHeight: 500 }}>
-          <AppointmentsReport />
+          <Suspense fallback={<SectionFallback />}>
+            <AppointmentsReport />
+          </Suspense>
         </div>
       )}
 
       {/* Анализ загрузки клиники */}
-      {activeReport === "analysis" && <ClinicAnalysisReport />}
+      {activeReport === "analysis" && (
+        <Suspense fallback={<SectionFallback />}>
+          <ClinicAnalysisReport />
+        </Suspense>
+      )}
 
       {/* Сводный дашборд */}
       {activeReport === "summary" && (
