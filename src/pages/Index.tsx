@@ -1,6 +1,9 @@
 import React, { useState } from "react";
 import Icon from "@/components/ui/icon";
 import Schedule from "@/components/Schedule";
+import { fmtNum, fmtRub, fmtMoney, pct } from "@/lib/format";
+import type { BranchData, BranchLogo } from "@/lib/types";
+import { EMPTY_BRANCH, LOGO_PURPOSES, LEGAL_FORMS } from "@/lib/branches";
 
 type Section =
   | "schedule"
@@ -431,9 +434,7 @@ const MONTH_DATA = {
   leads: { total: 91, converted: 47, convPct: 51 },
 };
 
-function pct(fact: number, plan: number) { return Math.min(100, Math.round(fact / plan * 100)); }
-function fmtNum(n: number) { return n.toLocaleString("ru-RU"); }
-function fmtRub(n: number) { return fmtNum(n) + " ₽"; }
+
 
 function ProgressBar({ value, max, color }: { value: number; max: number; color: string }) {
   const p = Math.min(100, Math.round(value / max * 100));
@@ -992,10 +993,6 @@ const REPORT_DATA: {
   { doctorId: 5, type: "primary", count: 9,  priceEach: 2500 },
   { doctorId: 5, type: "repeat",  count: 14, priceEach: 1800 },
 ];
-
-function fmtMoney(n: number) {
-  return n.toLocaleString("ru-RU") + " ₽";
-}
 
 // ─── Вспомогательный хук для отчёта ─────────────────────────────────────────
 function buildReportTree(filtered: typeof REPORT_DATA, type: "primary" | "repeat") {
@@ -1668,61 +1665,7 @@ function EmployeesSection() {
 
 /* ─── BRANCHES ─── */
 // ─── Типы филиала ─────────────────────────────────────────────────────────────
-interface BranchLogo { id: string; name: string; purpose: string; url: string }
-interface BranchData {
-  id: string;
-  tradeName: string;
-  legalName: string;
-  status: "active" | "inactive";
-  // Контакты
-  phone: string;
-  email: string;
-  website: string;
-  // Юридический адрес
-  legalIndex: string;
-  legalCity: string;
-  legalStreet: string;
-  // Фактический адрес
-  sameAddress: boolean;
-  factIndex: string;
-  factCity: string;
-  factStreet: string;
-  // Реквизиты
-  inn: string;
-  kpp: string;
-  ogrn: string;
-  legalForm: string;
-  bankName: string;
-  bik: string;
-  checkingAccount: string;
-  corrAccount: string;
-  // Лицензия
-  licenseNumber: string;
-  licenseDate: string;
-  licenseExpiry: string;
-  licenseAuthority: string;
-  licenseActivity: string;
-  // Логотипы
-  logos: BranchLogo[];
-  // Статистика
-  rooms: number;
-  doctors: number;
-}
-
-const EMPTY_BRANCH: BranchData = {
-  id: "", tradeName: "", legalName: "", status: "active",
-  phone: "", email: "", website: "",
-  legalIndex: "", legalCity: "", legalStreet: "",
-  sameAddress: false,
-  factIndex: "", factCity: "", factStreet: "",
-  inn: "", kpp: "", ogrn: "", legalForm: "ООО",
-  bankName: "", bik: "", checkingAccount: "", corrAccount: "",
-  licenseNumber: "", licenseDate: "", licenseExpiry: "", licenseAuthority: "", licenseActivity: "",
-  logos: [], rooms: 0, doctors: 0,
-};
-
-const LOGO_PURPOSES = ["Основной логотип", "Логотип для печати", "Мобильное приложение", "Сайт", "Факсимиле"];
-const LEGAL_FORMS   = ["ООО", "ОАО", "ЗАО", "ПАО", "АО", "ИП", "НКО", "ГБУЗ", "ФГБУ"];
+// Типы и константы филиалов перенесены в src/lib/types.ts и src/lib/branches.ts
 
 // ─── Переиспользуемые компоненты полей (объявлены ВНЕ функций-родителей!) ──────
 function BranchField({ label, value, onChange, placeholder, type = "text", required }: {
