@@ -1077,7 +1077,8 @@ function AppointmentsReport() {
   const repeatTotal  = repeatTree.reduce( (s, g) => ({ count: s.count + g.count, sum: s.sum + g.sum }), { count: 0, sum: 0 });
   const grandTotal   = { count: primaryTotal.count + repeatTotal.count, sum: primaryTotal.sum + repeatTotal.sum };
 
-  const ColHeader = () => (
+  // Рендер-функции (не компоненты) — не пересоздаются React'ом
+  const renderColHeader = () => (
     <div className="grid items-center border-b border-border bg-muted/30 sticky top-0 z-10"
       style={{ gridTemplateColumns: "1fr 100px 140px" }}>
       <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider px-5 py-2">Тип / Специализация / Врач</span>
@@ -1086,10 +1087,7 @@ function AppointmentsReport() {
     </div>
   );
 
-  const TypeRow = ({ label, total, expanded, onToggle, accent }: {
-    label: string; total: { count: number; sum: number };
-    expanded: boolean; onToggle: () => void; accent: string;
-  }) => (
+  const renderTypeRow = (label: string, total: { count: number; sum: number }, expanded: boolean, onToggle: () => void, accent: string) => (
     <button onClick={onToggle}
       className="w-full grid items-center hover:bg-muted/30 transition-colors"
       style={{ gridTemplateColumns: "1fr 100px 140px" }}>
@@ -1107,10 +1105,8 @@ function AppointmentsReport() {
     </button>
   );
 
-  const SpecRow = ({ specKey, spec, count, sum, expanded }: {
-    specKey: string; spec: string; count: number; sum: number; expanded: boolean;
-  }) => (
-    <button onClick={() => toggleSpec(specKey)}
+  const renderSpecRow = (specKey: string, spec: string, count: number, sum: number, expanded: boolean) => (
+    <button key={specKey + "-row"} onClick={() => toggleSpec(specKey)}
       className="w-full grid items-center hover:bg-muted/20 transition-colors border-t border-border/40"
       style={{ gridTemplateColumns: "1fr 100px 140px", background: "hsl(var(--muted)/0.08)" }}>
       <div className="flex items-center gap-2 pl-12 pr-5 py-2.5">
@@ -1125,8 +1121,8 @@ function AppointmentsReport() {
     </button>
   );
 
-  const DoctorRow = ({ doc, count, sum }: { doc: typeof REPORT_DOCTORS[0]; count: number; sum: number }) => (
-    <div className="grid items-center border-t border-border/30 hover:bg-muted/10 transition-colors"
+  const renderDoctorRow = (doc: typeof REPORT_DOCTORS[0], count: number, sum: number) => (
+    <div key={doc.id} className="grid items-center border-t border-border/30 hover:bg-muted/10 transition-colors"
       style={{ gridTemplateColumns: "1fr 100px 140px", background: "hsl(var(--card))" }}>
       <div className="flex items-center gap-2 pl-20 pr-5 py-2">
         <div className="w-2 h-2 rounded-full shrink-0" style={{ background: doc.color }} />
@@ -1145,10 +1141,8 @@ function AppointmentsReport() {
         const specExpanded = expandedSpecs.has(specKey);
         return (
           <div key={specKey}>
-            <SpecRow specKey={specKey} spec={group.spec} count={group.count} sum={group.sum} expanded={specExpanded} />
-            {specExpanded && group.doctors.map(d => (
-              <DoctorRow key={d.doc.id} doc={d.doc} count={d.count} sum={d.sum} />
-            ))}
+            {renderSpecRow(specKey, group.spec, group.count, group.sum, specExpanded)}
+            {specExpanded && group.doctors.map(d => renderDoctorRow(d.doc, d.count, d.sum))}
           </div>
         );
       })}
@@ -1270,12 +1264,12 @@ function AppointmentsReport() {
 
         {/* Таблица */}
         <div className="flex-1 overflow-y-auto scrollbar-thin bg-card">
-          <ColHeader />
+          {renderColHeader()}
 
           {/* Первичный */}
           <div className="border-b border-border">
-            <TypeRow label="Первичный приём" total={primaryTotal} expanded={expandedPrimary}
-              onToggle={() => setExpandedPrimary(v => !v)} accent="hsl(199,85%,38%)" />
+            {renderTypeRow("Первичный приём", primaryTotal, expandedPrimary,
+              () => setExpandedPrimary(v => !v), "hsl(199,85%,38%)")}
             {expandedPrimary && (
               <div>{renderTree(primaryTree, "primary")}</div>
             )}
@@ -1283,8 +1277,8 @@ function AppointmentsReport() {
 
           {/* Повторный */}
           <div className="border-b border-border">
-            <TypeRow label="Повторный приём" total={repeatTotal} expanded={expandedRepeat}
-              onToggle={() => setExpandedRepeat(v => !v)} accent="hsl(162,60%,40%)" />
+            {renderTypeRow("Повторный приём", repeatTotal, expandedRepeat,
+              () => setExpandedRepeat(v => !v), "hsl(162,60%,40%)")}
             {expandedRepeat && (
               <div>{renderTree(repeatTree, "repeat")}</div>
             )}
@@ -1765,6 +1759,34 @@ function BranchTextarea({ label, value, onChange, placeholder, rows = 3 }: {
   );
 }
 
+// Компоненты карточки филиала (просмотр) — модульного уровня
+function BranchInfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+  if (!value) return null;
+  return (
+    <div className="flex items-start gap-3 py-3 border-b border-border/50 last:border-0">
+      <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+        <Icon name={icon} size={14} className="text-muted-foreground" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] text-muted-foreground mb-0.5">{label}</p>
+        <p className="text-sm text-foreground font-medium">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function BranchDetailSection({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/20">
+        <Icon name={icon} size={14} className="text-primary" />
+        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</span>
+      </div>
+      <div className="px-4">{children}</div>
+    </div>
+  );
+}
+
 // ─── Модальное окно филиала ───────────────────────────────────────────────────
 function BranchModal({ branch, onClose, onSave, inline = false }: {
   branch: BranchData;
@@ -2178,29 +2200,6 @@ function BranchesSection() {
   // ── РЕЖИМ ПРОСМОТРА КАРТОЧКИ ────────────────────────────────────────────────
   if (mode === "detail" && selected) {
     const b = branchList.find(x => x.id === selected.id) ?? selected;
-    const InfoRow = ({ icon, label, value }: { icon: string; label: string; value: string }) =>
-      value ? (
-        <div className="flex items-start gap-3 py-3 border-b border-border/50 last:border-0">
-          <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
-            <Icon name={icon} size={14} className="text-muted-foreground" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[11px] text-muted-foreground mb-0.5">{label}</p>
-            <p className="text-sm text-foreground font-medium">{value}</p>
-          </div>
-        </div>
-      ) : null;
-
-    const Section = ({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) => (
-      <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/20">
-          <Icon name={icon} size={14} className="text-primary" />
-          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</span>
-        </div>
-        <div className="px-4">{children}</div>
-      </div>
-    );
-
     return (
       <div className="space-y-4 max-w-3xl">
         {/* Хлебные крошки + действия */}
@@ -2263,40 +2262,40 @@ function BranchesSection() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Контакты */}
-          <Section title="Контакты" icon="Phone">
-            <InfoRow icon="Phone"   label="Телефон"  value={b.phone} />
-            <InfoRow icon="Mail"    label="Email"    value={b.email} />
-            <InfoRow icon="Globe"   label="Сайт"     value={b.website} />
-          </Section>
+          <BranchDetailSection title="Контакты" icon="Phone">
+            <BranchInfoRow icon="Phone"   label="Телефон"  value={b.phone} />
+            <BranchInfoRow icon="Mail"    label="Email"    value={b.email} />
+            <BranchInfoRow icon="Globe"   label="Сайт"     value={b.website} />
+          </BranchDetailSection>
 
           {/* Адрес */}
-          <Section title="Адрес" icon="MapPin">
-            <InfoRow icon="MapPin"  label="Юридический адрес"
+          <BranchDetailSection title="Адрес" icon="MapPin">
+            <BranchInfoRow icon="MapPin"  label="Юридический адрес"
               value={[b.legalIndex, b.legalCity, b.legalStreet].filter(Boolean).join(", ")} />
-            <InfoRow icon="Navigation" label="Фактический адрес"
+            <BranchInfoRow icon="Navigation" label="Фактический адрес"
               value={b.sameAddress
                 ? [b.legalIndex, b.legalCity, b.legalStreet].filter(Boolean).join(", ")
                 : [b.factIndex, b.factCity, b.factStreet].filter(Boolean).join(", ")} />
-          </Section>
+          </BranchDetailSection>
 
           {/* Реквизиты */}
-          <Section title="Реквизиты" icon="FileSpreadsheet">
-            <InfoRow icon="Hash"   label="ИНН"   value={b.inn} />
-            <InfoRow icon="Hash"   label="КПП"   value={b.kpp} />
-            <InfoRow icon="Hash"   label="ОГРН"  value={b.ogrn} />
-            <InfoRow icon="Landmark" label="Банк" value={b.bankName} />
-            <InfoRow icon="CreditCard" label="Расчётный счёт" value={b.checkingAccount} />
-          </Section>
+          <BranchDetailSection title="Реквизиты" icon="FileSpreadsheet">
+            <BranchInfoRow icon="Hash"   label="ИНН"   value={b.inn} />
+            <BranchInfoRow icon="Hash"   label="КПП"   value={b.kpp} />
+            <BranchInfoRow icon="Hash"   label="ОГРН"  value={b.ogrn} />
+            <BranchInfoRow icon="Landmark" label="Банк" value={b.bankName} />
+            <BranchInfoRow icon="CreditCard" label="Расчётный счёт" value={b.checkingAccount} />
+          </BranchDetailSection>
 
           {/* Лицензия */}
-          <Section title="Лицензия" icon="ShieldCheck">
-            <InfoRow icon="FileText"  label="Номер лицензии"  value={b.licenseNumber} />
-            <InfoRow icon="Calendar"  label="Дата выдачи"
+          <BranchDetailSection title="Лицензия" icon="ShieldCheck">
+            <BranchInfoRow icon="FileText"  label="Номер лицензии"  value={b.licenseNumber} />
+            <BranchInfoRow icon="Calendar"  label="Дата выдачи"
               value={b.licenseDate ? new Date(b.licenseDate).toLocaleDateString("ru-RU") : ""} />
-            <InfoRow icon="CalendarX" label="Срок действия"
+            <BranchInfoRow icon="CalendarX" label="Срок действия"
               value={b.licenseExpiry ? new Date(b.licenseExpiry).toLocaleDateString("ru-RU") : "Бессрочная"} />
-            <InfoRow icon="Building"  label="Орган выдачи"    value={b.licenseAuthority} />
-          </Section>
+            <BranchInfoRow icon="Building"  label="Орган выдачи"    value={b.licenseAuthority} />
+          </BranchDetailSection>
         </div>
 
         {/* Логотипы */}
@@ -2484,6 +2483,33 @@ const DEFAULT_PLANS: Record<string, number[]> = {
   other:  [300000, 300000, 400000, 400000, 400000, 400000, 400000, 500000, 400000, 500000, 400000, 500000],
 };
 
+// Ячейка плана с локальным состоянием — не теряет курсор при наборе
+function PlanCell({ value, onCommit }: { value: number; onCommit: (val: string) => void }) {
+  const [text, setText] = React.useState<string>(fmtNum(value));
+  const [focused, setFocused] = React.useState(false);
+
+  // Синхронизация при внешнем изменении (например, после save)
+  React.useEffect(() => {
+    if (!focused) setText(fmtNum(value));
+  }, [value, focused]);
+
+  return (
+    <input
+      type="text"
+      value={text}
+      onFocus={() => { setFocused(true); setText(String(value || "")); }}
+      onChange={e => setText(e.target.value)}
+      onBlur={() => {
+        setFocused(false);
+        const num = parseInt(text.replace(/\D/g, ""), 10) || 0;
+        setText(fmtNum(num));
+        onCommit(String(num));
+      }}
+      className="w-full text-xs text-center border border-border rounded px-1 py-1 bg-background outline-none focus:border-primary text-foreground"
+    />
+  );
+}
+
 function PlansSection() {
   const [year, setYear]   = useState(2026);
   const [plans, setPlans] = useState<Record<string, number[]>>(
@@ -2584,12 +2610,7 @@ function PlansSection() {
                   </td>
                   {plans[spec.key].map((v, i) => (
                     <td key={i} className="px-2 py-1.5 text-center">
-                      <input
-                        type="text"
-                        value={fmtNum(v)}
-                        onChange={e => updatePlan(spec.key, i, e.target.value)}
-                        className="w-full text-xs text-center border border-border rounded px-1 py-1 bg-background outline-none focus:border-primary text-foreground"
-                      />
+                      <PlanCell value={v} onCommit={val => updatePlan(spec.key, i, val)} />
                     </td>
                   ))}
                 </tr>
@@ -2828,7 +2849,8 @@ function ClinicAnalysisReport() {
 
   // ── Компоненты ──────────────────────────────────────────────────────────────
 
-  const RowLabel = ({ label, bold, indent, specKey }: { label: string; bold?: boolean; indent?: number; specKey?: string }) => {
+  // Рендер-функции (не компоненты) — не пересоздаются React'ом
+  const renderRowLabel = (label: string, bold?: boolean, indent?: number, specKey?: string) => {
     const isExp = specKey ? expandedSpecs.has(specKey) : false;
     return (
       <td className={`px-3 py-2.5 text-sm sticky left-0 bg-card z-10 border-r border-border/40 whitespace-nowrap ${bold ? "font-bold text-foreground" : "text-muted-foreground"}`}
@@ -2864,22 +2886,20 @@ function ClinicAnalysisReport() {
   };
 
   // Ячейка с градиентным цветом по рангу среди всех значений в строке
-  const RankedCell = ({ val, fmt, rank, total, isCurr }: {
-    val: number; fmt: "rub"|"num"|"pct"; rank: number; total: number; isCurr: boolean;
-  }) => {
+  const renderRankedCell = (key: string | number, val: number, fmt: "rub"|"num"|"pct", rank: number, total: number, isCurr: boolean) => {
     const txt = fmt === "rub" ? (val ? fmtRub(val) : "—") : fmt === "pct" ? (val ? `${val}%` : "—") : (val ? String(val) : "—");
     const bg  = val > 0 ? gradientColor(rank, total, true)  : "";
     const fg  = val > 0 ? gradientColor(rank, total, false) : "hsl(var(--muted-foreground))";
     return (
-      <td className={`text-center whitespace-nowrap ${isCurr ? "px-3 py-2.5 text-sm font-semibold" : "px-2 py-2.5"}`}
+      <td key={key} className={`text-center whitespace-nowrap ${isCurr ? "px-3 py-2.5 text-sm font-semibold" : "px-2 py-2.5"}`}
         style={{ background: bg, borderLeft: isCurr ? "2px solid hsl(199,85%,38%,0.3)" : undefined }}>
         <span className={isCurr ? "text-sm font-semibold" : "text-[11px]"} style={{ color: fg }}>{txt}</span>
       </td>
     );
   };
 
-  const SectionRow = ({ label, color }: { label: string; color: string }) => (
-    <tr>
+  const renderSectionRow = (key: string, label: string, color: string) => (
+    <tr key={key}>
       <td colSpan={totalCols + 1} className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider"
         style={{ background: color + "22", color, position: "sticky", left: 0 }}>
         {label}
@@ -2888,19 +2908,15 @@ function ClinicAnalysisReport() {
   );
 
   // Строка данных с ранжированием цветов по всем месяцам
-  const DataRow = ({
-    label, bold, indent, specKey,
-    getVal,
-    fmt,
-    hlCurr,   // фиксированный цвет (план/факт/%) — не ранжируется
-    isRevColor,
-  }: {
+  type DataRowArgs = {
+    key: string;
     label: string; bold?: boolean; indent?: number; specKey?: string;
     getVal: (accum: ReturnType<typeof getMonthAccum>, plan: number, shouldBe: number, day: number, daysInM: number) => number;
     fmt: "rub"|"num"|"pct";
     hlCurr?: "green"|"amber"|"red"|"blue"|"none";
     isRevColor?: boolean;
-  }) => {
+  };
+  const renderDataRow = ({ key, label, bold, indent, specKey, getVal, fmt, hlCurr }: DataRowArgs) => {
     const prevVals = prevMonthCols.map(c => getVal(c.accum, c.plan, c.shouldBe, c.day, c.daysInM));
     const currVal  = getVal(currAccum, currPlan, currShouldBe, selDay, currDaysInM);
     const allVals  = [...prevVals, currVal];
@@ -2911,11 +2927,10 @@ function ClinicAnalysisReport() {
     const getRank  = (v: number) => v > 0 ? nonZero.indexOf(v) : -1;
 
     return (
-      <tr className="border-b border-border/40 hover:bg-muted/5">
-        <RowLabel label={label} bold={bold} indent={indent} specKey={specKey} />
+      <tr key={key} className="border-b border-border/40 hover:bg-muted/5">
+        {renderRowLabel(label, bold, indent, specKey)}
         {prevVals.map((v, i) => {
           if (hlCurr !== undefined) {
-            // Фиксированные строки (план/факт/%) — без градиента
             const txt = fmt === "rub" ? (v ? fmtRub(v) : "—") : fmt === "pct" ? (v ? `${v}%` : "—") : (v ? String(v) : "—");
             return (
               <td key={i} className="px-2 py-2.5 text-center whitespace-nowrap">
@@ -2924,23 +2939,22 @@ function ClinicAnalysisReport() {
             );
           }
           const rank = getRank(v);
-          return <RankedCell key={i} val={v} fmt={fmt} rank={rank < 0 ? 0 : rank} total={nonZero.length} isCurr={false} />;
+          return renderRankedCell(i, v, fmt, rank < 0 ? 0 : rank, nonZero.length, false);
         })}
-        {/* Текущая колонка */}
         {hlCurr !== undefined ? (
           (() => {
             const txt = fmt === "rub" ? (currVal ? fmtRub(currVal) : "—") : fmt === "pct" ? (currVal ? `${currVal}%` : "—") : (currVal ? String(currVal) : "—");
             const bg = hlCurr === "green" ? "#dcfce7" : hlCurr === "amber" ? "#fef9c3" : hlCurr === "red" ? "#fee2e2" : hlCurr === "blue" ? "hsl(199,85%,38%,0.1)" : "";
             const fg = hlCurr === "green" ? "#15803d" : hlCurr === "amber" ? "#92400e" : hlCurr === "red" ? "#dc2626" : hlCurr === "blue" ? "hsl(199,85%,38%)" : "hsl(var(--foreground))";
             return (
-              <td className="px-3 py-2.5 text-sm font-semibold text-center whitespace-nowrap"
+              <td key="curr" className="px-3 py-2.5 text-sm font-semibold text-center whitespace-nowrap"
                 style={{ background: bg, borderLeft: "2px solid hsl(199,85%,38%,0.3)" }}>
                 <span style={{ color: fg }}>{txt}</span>
               </td>
             );
           })()
         ) : (
-          <RankedCell val={currVal} fmt={fmt} rank={getRank(currVal) < 0 ? 0 : getRank(currVal)} total={nonZero.length} isCurr={true} />
+          renderRankedCell("curr", currVal, fmt, getRank(currVal) < 0 ? 0 : getRank(currVal), nonZero.length, true)
         )}
       </tr>
     );
@@ -2994,39 +3008,35 @@ function ClinicAnalysisReport() {
 
             <tbody>
               {/* ── Плановые строки ── */}
-              <SectionRow label="Выполнение плана" color="hsl(199,85%,38%)" />
+              {renderSectionRow("plan-sec", "Выполнение плана", "hsl(199,85%,38%)")}
 
-              {/* План на месяц */}
-              <DataRow label="План на месяц" bold fmt="rub" hlCurr="none"
-                getVal={(_, plan) => plan} />
+              {renderDataRow({ key: "plan", label: "План на месяц", bold: true, fmt: "rub", hlCurr: "none",
+                getVal: (_, plan) => plan })}
 
-              {/* Должно быть к этой дате */}
-              <DataRow label={`Должно быть (к ${selDay}-му)`} bold fmt="rub" hlCurr="blue"
-                getVal={(_, plan, shouldBe) => shouldBe} />
+              {renderDataRow({ key: "should", label: `Должно быть (к ${selDay}-му)`, bold: true, fmt: "rub", hlCurr: "blue",
+                getVal: (_, plan, shouldBe) => shouldBe })}
 
-              {/* Факт с начала месяца */}
-              <DataRow label="Выручка (факт)" bold fmt="rub" isRevColor
-                getVal={(accum) => accum.totRevenue} />
+              {renderDataRow({ key: "fact", label: "Выручка (факт)", bold: true, fmt: "rub", isRevColor: true,
+                getVal: (accum) => accum.totRevenue })}
 
-              {/* % выполнения */}
-              <DataRow label="% выполнения" bold fmt="pct"
-                hlCurr={currPctPlan >= 100 ? "green" : currPctPlan >= 80 ? "amber" : "red"}
-                getVal={(accum, plan) => plan > 0 ? Math.round(accum.totRevenue / plan * 100) : 0} />
+              {renderDataRow({ key: "pct", label: "% выполнения", bold: true, fmt: "pct",
+                hlCurr: currPctPlan >= 100 ? "green" : currPctPlan >= 80 ? "amber" : "red",
+                getVal: (accum, plan) => plan > 0 ? Math.round(accum.totRevenue / plan * 100) : 0 })}
 
               {/* ── Итого по клинике ── */}
-              <SectionRow label="Итого по клинике" color="hsl(199,85%,38%)" />
+              {renderSectionRow("tot-sec", "Итого по клинике", "hsl(199,85%,38%)")}
 
-              <DataRow label="Первичный приём" bold fmt="num" isRevColor
-                getVal={(accum) => accum.totPrimary} />
+              {renderDataRow({ key: "tot-prim", label: "Первичный приём", bold: true, fmt: "num", isRevColor: true,
+                getVal: (accum) => accum.totPrimary })}
 
-              <DataRow label="Повторный приём" bold fmt="num" isRevColor
-                getVal={(accum) => accum.totRepeat} />
+              {renderDataRow({ key: "tot-rep", label: "Повторный приём", bold: true, fmt: "num", isRevColor: true,
+                getVal: (accum) => accum.totRepeat })}
 
-              <DataRow label="ПП в день" bold fmt="num" isRevColor
-                getVal={(accum, _p, _s, day) => day > 0 ? Math.round(accum.totPrimary / day) : 0} />
+              {renderDataRow({ key: "tot-pp", label: "ПП в день", bold: true, fmt: "num", isRevColor: true,
+                getVal: (accum, _p, _s, day) => day > 0 ? Math.round(accum.totPrimary / day) : 0 })}
 
-              <DataRow label="Средний чек" bold fmt="rub" isRevColor
-                getVal={(accum) => avgCheckCalc(accum.totRevenue, accum.totPrimary)} />
+              {renderDataRow({ key: "tot-avg", label: "Средний чек", bold: true, fmt: "rub", isRevColor: true,
+                getVal: (accum) => avgCheckCalc(accum.totRevenue, accum.totPrimary) })}
 
               {/* ── По каждой специализации ── */}
               {MIS_SPECIALIZATIONS.map(spec => {
@@ -3035,29 +3045,27 @@ function ClinicAnalysisReport() {
 
                 return (
                   <React.Fragment key={spec.key}>
-                    <SectionRow label={spec.label} color={spec.color} />
+                    {renderSectionRow(`sec-${spec.key}`, spec.label, spec.color)}
 
-                    {/* Выручка специализации */}
-                    <DataRow label="Выручка" bold fmt="rub" isRevColor specKey={spec.key}
-                      getVal={(accum) => accum.specRevenue[spec.key] ?? 0} />
+                    {renderDataRow({ key: `${spec.key}-rev`, label: "Выручка", bold: true, fmt: "rub", isRevColor: true, specKey: spec.key,
+                      getVal: (accum) => accum.specRevenue[spec.key] ?? 0 })}
 
-                    {/* Врачи (если раскрыто) */}
                     {isExp && doctors.map(doc => (
-                      <DataRow key={doc.shortName} label={doc.shortName} fmt="rub" indent={1}
-                        getVal={(accum) => Math.round((accum.specRevenue[spec.key] ?? 0) * 0.6)} />
+                      renderDataRow({ key: `${spec.key}-${doc.shortName}`, label: doc.shortName, fmt: "rub", indent: 1,
+                        getVal: (accum) => Math.round((accum.specRevenue[spec.key] ?? 0) * 0.6) })
                     ))}
 
-                    <DataRow label="Первичный приём" fmt="num" isRevColor
-                      getVal={(accum) => accum.specPrimary[spec.key] ?? 0} />
+                    {renderDataRow({ key: `${spec.key}-prim`, label: "Первичный приём", fmt: "num", isRevColor: true,
+                      getVal: (accum) => accum.specPrimary[spec.key] ?? 0 })}
 
-                    <DataRow label="Повторный приём" fmt="num" isRevColor
-                      getVal={(accum) => accum.specRepeat[spec.key] ?? 0} />
+                    {renderDataRow({ key: `${spec.key}-rep`, label: "Повторный приём", fmt: "num", isRevColor: true,
+                      getVal: (accum) => accum.specRepeat[spec.key] ?? 0 })}
 
-                    <DataRow label="ПП в день" fmt="num" isRevColor
-                      getVal={(accum, _p, _s, day) => day > 0 ? Math.round((accum.specPrimary[spec.key] ?? 0) / day) : 0} />
+                    {renderDataRow({ key: `${spec.key}-pp`, label: "ПП в день", fmt: "num", isRevColor: true,
+                      getVal: (accum, _p, _s, day) => day > 0 ? Math.round((accum.specPrimary[spec.key] ?? 0) / day) : 0 })}
 
-                    <DataRow label="Средний чек" fmt="rub" isRevColor
-                      getVal={(accum) => avgCheckCalc(accum.specRevenue[spec.key] ?? 0, accum.specPrimary[spec.key] ?? 1)} />
+                    {renderDataRow({ key: `${spec.key}-avg`, label: "Средний чек", fmt: "rub", isRevColor: true,
+                      getVal: (accum) => avgCheckCalc(accum.specRevenue[spec.key] ?? 0, accum.specPrimary[spec.key] ?? 1) })}
                   </React.Fragment>
                 );
               })}
